@@ -27,6 +27,7 @@
         <junit.version>5.13.4</junit.version>
         <testcontainers.version>1.21.3</testcontainers.version>
         <maven-enforcer-plugin.version>3.6.1</maven-enforcer-plugin.version>
+        <maven.compiler.parameters>true</maven.compiler.parameters>
     </properties>
 
     <modules>
@@ -74,6 +75,7 @@
                     <version>3.14.1</version>
                     <configuration>
                         <release>${maven.compiler.release}</release>
+                        <parameters>${maven.compiler.parameters}</parameters>
                     </configuration>
                 </plugin>
 

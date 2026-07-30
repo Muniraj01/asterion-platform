@@ -31,9 +31,7 @@
     </properties>
 
     <modules>
-        <!-- Shared libraries -->
-        <!-- Will be added incrementally -->
-
+        <module>libraries/events</module>
         <!-- Services -->
         <!-- Will be added incrementally -->
     </modules>

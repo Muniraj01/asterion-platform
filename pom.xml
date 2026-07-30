@@ -32,8 +32,7 @@
 
     <modules>
         <module>libraries/events</module>
-        <!-- Services -->
-        <!-- Will be added incrementally -->
+        <module>libraries/testing</module>
     </modules>
 
     <dependencyManagement>

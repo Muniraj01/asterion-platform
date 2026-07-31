@@ -33,6 +33,7 @@
     <modules>
         <module>libraries/events</module>
         <module>libraries/testing</module>
+        <module>services/auth-service</module>
     </modules>
 
     <dependencyManagement>

@@ -1,22 +1,28 @@
 package com.asterion.testing;
 
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
-@Testcontainers
 public abstract class RedisContainerSupport {
 
-    @Container
-    protected static final GenericContainer<?> REDIS =
-            new GenericContainer<>("redis:7-alpine")
+    private static final DockerImageName REDIS_IMAGE =
+            DockerImageName.parse("redis:7.4-alpine");
+
+    protected static final GenericContainer<?> REDIS_CONTAINER =
+            new GenericContainer<>(REDIS_IMAGE)
                     .withExposedPorts(6379);
 
-    protected String redisHost() {
-        return REDIS.getHost();
-    }
+    static {
+        REDIS_CONTAINER.start();
 
-    protected Integer redisPort() {
-        return REDIS.getMappedPort(6379);
+        System.setProperty(
+                "spring.data.redis.host",
+                REDIS_CONTAINER.getHost()
+        );
+
+        System.setProperty(
+                "spring.data.redis.port",
+                REDIS_CONTAINER.getMappedPort(6379).toString()
+        );
     }
 }

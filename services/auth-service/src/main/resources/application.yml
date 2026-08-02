@@ -2,6 +2,24 @@ spring:
   application:
     name: auth-service
 
+  datasource:
+    url: jdbc:postgresql://localhost:55432/asterion_auth
+    username: asterion
+    password: asterion
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
 logging:
   level:
-    org.springframework.security: DEBUG
+    org.hibernate.SQL: debug
+    org.springframework.security: info

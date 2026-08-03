@@ -11,7 +11,7 @@ public final class User {
     private final Instant createdAt;
     private boolean active;
 
-    private User(
+    public User(
             UserId id,
             EmailAddress email,
             PasswordHash passwordHash,

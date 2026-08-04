@@ -23,3 +23,8 @@ logging:
   level:
     org.hibernate.SQL: debug
     org.springframework.security: info
+
+security:
+  jwt:
+    secret: very-secret-development-key-change-in-production-123456789
+    expiration-seconds: 3600

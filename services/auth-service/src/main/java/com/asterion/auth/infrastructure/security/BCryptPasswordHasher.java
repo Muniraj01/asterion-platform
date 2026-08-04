@@ -1,6 +1,7 @@
 package com.asterion.auth.infrastructure.security;
 
 import com.asterion.auth.application.port.out.PasswordHasher;
+import com.asterion.auth.domain.model.PasswordHash;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 
@@ -11,12 +12,18 @@ public class BCryptPasswordHasher implements PasswordHasher {
             new BCryptPasswordEncoder();
 
     @Override
-    public String hash(String rawPassword) {
-        return encoder.encode(rawPassword);
+    public PasswordHash hash(String rawPassword) {
+        return new PasswordHash(encoder.encode(rawPassword));
     }
 
     @Override
-    public boolean matches(String rawPassword, String hashedPassword) {
-        return encoder.matches(rawPassword, hashedPassword);
+    public boolean matches(
+            String rawPassword,
+            PasswordHash passwordHash
+    ) {
+        return encoder.matches(
+                rawPassword,
+                passwordHash.value()
+        );
     }
 }

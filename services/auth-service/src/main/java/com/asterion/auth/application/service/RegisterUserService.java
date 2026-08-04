@@ -34,7 +34,7 @@ public class RegisterUserService implements RegisterUserUseCase {
         }
 
         PasswordHash hash =
-                new PasswordHash(passwordHasher.hash(command.rawPassword()));
+                new PasswordHash(passwordHasher.hash(command.rawPassword()).value());
 
         User user = User.register(email, hash);
 

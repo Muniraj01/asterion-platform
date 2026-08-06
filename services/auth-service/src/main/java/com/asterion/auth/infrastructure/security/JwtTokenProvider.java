@@ -1,6 +1,7 @@
 package com.asterion.auth.infrastructure.security;
 
 import com.asterion.auth.domain.model.User;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -47,7 +48,34 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    public boolean isValid(String token) {
+
+        try {
+            parseClaims(token);
+            return true;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    public String extractSubject(String token) {
+        return parseClaims(token).getSubject();
+    }
+
+    public String extractEmail(String token) {
+        return parseClaims(token).get("email", String.class);
+    }
+
     public long expirationSeconds() {
         return expirationSeconds;
+    }
+
+    private Claims parseClaims(String token) {
+
+        return Jwts.parser()
+                .verifyWith(secretKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 }

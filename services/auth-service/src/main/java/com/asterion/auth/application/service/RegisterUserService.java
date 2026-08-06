@@ -1,7 +1,7 @@
 package com.asterion.auth.application.service;
 
 import com.asterion.auth.application.command.RegisterUserCommand;
-import com.asterion.auth.application.exception.EmailAlreadyExistsException;
+import com.asterion.auth.domain.exception.EmailAlreadyRegisteredException;
 import com.asterion.auth.application.port.in.RegisterUserUseCase;
 import com.asterion.auth.application.port.out.PasswordHasher;
 import com.asterion.auth.application.port.out.UserRepository;
@@ -30,7 +30,7 @@ public class RegisterUserService implements RegisterUserUseCase {
         EmailAddress email = new EmailAddress(command.email());
 
         if (userRepository.existsByEmail(email)) {
-            throw new EmailAlreadyExistsException(email.value());
+            throw new EmailAlreadyRegisteredException(email.value());
         }
 
         PasswordHash hash =

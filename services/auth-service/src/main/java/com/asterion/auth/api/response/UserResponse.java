@@ -1,4 +1,4 @@
-package com.asterion.auth.interfaces.rest;
+package com.asterion.auth.api.response;
 
 import java.time.Instant;
 

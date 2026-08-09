@@ -1,6 +1,5 @@
 package com.asterion.auth.application.port.in;
 
-import com.asterion.auth.application.command.AuthenticateUserCommand;
 import com.asterion.auth.domain.model.User;
 
 public interface AuthenticateUserUseCase {

@@ -1,6 +1,8 @@
-package com.asterion.auth.interfaces.rest;
+package com.asterion.auth.api.controller;
 
-import com.asterion.auth.application.command.RegisterUserCommand;
+import com.asterion.auth.api.request.RegisterUserRequest;
+import com.asterion.auth.api.response.UserResponse;
+import com.asterion.auth.application.port.in.RegisterUserCommand;
 import com.asterion.auth.application.port.in.RegisterUserUseCase;
 import com.asterion.auth.domain.model.User;
 import jakarta.validation.Valid;

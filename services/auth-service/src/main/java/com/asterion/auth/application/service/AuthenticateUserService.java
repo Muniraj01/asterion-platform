@@ -1,6 +1,6 @@
 package com.asterion.auth.application.service;
 
-import com.asterion.auth.application.command.AuthenticateUserCommand;
+import com.asterion.auth.application.port.in.AuthenticateUserCommand;
 import com.asterion.auth.application.port.in.AuthenticateUserUseCase;
 import com.asterion.auth.application.port.out.PasswordHasher;
 import com.asterion.auth.application.port.out.UserRepository;

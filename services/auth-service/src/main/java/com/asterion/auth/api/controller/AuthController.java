@@ -2,10 +2,11 @@ package com.asterion.auth.api.controller;
 
 import com.asterion.auth.api.request.LoginRequest;
 import com.asterion.auth.api.response.LoginResponse;
-import com.asterion.auth.application.command.AuthenticateUserCommand;
+import com.asterion.auth.application.port.in.AuthenticateUserCommand;
 import com.asterion.auth.application.port.in.AuthenticateUserUseCase;
 import com.asterion.auth.domain.model.User;
 import com.asterion.auth.infrastructure.security.JwtTokenProvider;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,7 +27,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(
-            @RequestBody LoginRequest request
+            @Valid @RequestBody LoginRequest request
     ) {
 
         User user = authenticateUserUseCase.authenticate(

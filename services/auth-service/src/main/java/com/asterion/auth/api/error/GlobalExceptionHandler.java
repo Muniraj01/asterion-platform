@@ -2,15 +2,16 @@ package com.asterion.auth.api.error;
 
 import com.asterion.auth.domain.exception.EmailAlreadyRegisteredException;
 import com.asterion.auth.domain.exception.InvalidCredentialsException;
-import com.asterion.auth.domain.exception.InvalidEmailAddressException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
@@ -18,9 +19,36 @@ import java.util.List;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(
-            EmailAlreadyRegisteredException.class
-    )
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ProblemDetail handleValidation(
+            MethodArgumentNotValidException ex,
+            HttpServletRequest request
+    ) {
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST,
+                "Request validation failed"
+        );
+
+        problem.setTitle("Validation failed");
+        problem.setType(URI.create(
+                "https://api.asterion.com/problems/validation-failed"
+        ));
+        problem.setInstance(URI.create(request.getRequestURI()));
+
+        List<ApiValidationError> errors = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(this::toValidationError)
+                .toList();
+
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("errors", errors);
+
+        return problem;
+    }
+
+    @ExceptionHandler(EmailAlreadyRegisteredException.class)
     public ProblemDetail handleEmailAlreadyRegistered(
             EmailAlreadyRegisteredException ex,
             HttpServletRequest request
@@ -32,22 +60,16 @@ public class GlobalExceptionHandler {
         );
 
         problem.setTitle("Email already registered");
-
         problem.setType(URI.create(
                 "https://api.asterion.com/problems/email-already-registered"
         ));
-
+        problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("timestamp", Instant.now());
-
-        problem.setProperty("instance",
-                request.getRequestURI());
 
         return problem;
     }
 
-    @ExceptionHandler(
-            InvalidCredentialsException.class
-    )
+    @ExceptionHandler(InvalidCredentialsException.class)
     public ProblemDetail handleInvalidCredentials(
             InvalidCredentialsException ex,
             HttpServletRequest request
@@ -59,24 +81,18 @@ public class GlobalExceptionHandler {
         );
 
         problem.setTitle("Invalid credentials");
-
         problem.setType(URI.create(
                 "https://api.asterion.com/problems/invalid-credentials"
         ));
-
+        problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("timestamp", Instant.now());
-
-        problem.setProperty("instance",
-                request.getRequestURI());
 
         return problem;
     }
 
-    @ExceptionHandler(
-            InvalidEmailAddressException.class
-    )
-    public ProblemDetail handleInvalidEmail(
-            InvalidEmailAddressException ex,
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ProblemDetail handleConstraintViolation(
+            ConstraintViolationException ex,
             HttpServletRequest request
     ) {
 
@@ -85,51 +101,12 @@ public class GlobalExceptionHandler {
                 ex.getMessage()
         );
 
-        problem.setTitle("Invalid email address");
-
+        problem.setTitle("Constraint violation");
         problem.setType(URI.create(
-                "https://api.asterion.com/problems/invalid-email-address"
+                "https://api.asterion.com/problems/constraint-violation"
         ));
-
+        problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("timestamp", Instant.now());
-
-        problem.setProperty("instance",
-                request.getRequestURI());
-
-        return problem;
-    }
-
-    @ExceptionHandler(
-            MethodArgumentNotValidException.class
-    )
-    public ProblemDetail handleValidation(
-            MethodArgumentNotValidException ex,
-            HttpServletRequest request
-    ) {
-
-        List<ApiValidationError> errors = ex.getBindingResult()
-                .getFieldErrors()
-                .stream()
-                .map(this::mapFieldError)
-                .toList();
-
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-                HttpStatus.BAD_REQUEST,
-                "Request validation failed"
-        );
-
-        problem.setTitle("Validation failed");
-
-        problem.setType(URI.create(
-                "https://api.asterion.com/problems/validation-failed"
-        ));
-
-        problem.setProperty("timestamp", Instant.now());
-
-        problem.setProperty("instance",
-                request.getRequestURI());
-
-        problem.setProperty("errors", errors);
 
         return problem;
     }
@@ -140,26 +117,24 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
 
+        ex.printStackTrace();
+
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "An unexpected error occurred"
         );
 
         problem.setTitle("Internal server error");
-
         problem.setType(URI.create(
                 "https://api.asterion.com/problems/internal-server-error"
         ));
-
+        problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("timestamp", Instant.now());
-
-        problem.setProperty("instance",
-                request.getRequestURI());
 
         return problem;
     }
 
-    private ApiValidationError mapFieldError(
+    private ApiValidationError toValidationError(
             FieldError error
     ) {
 
@@ -167,5 +142,26 @@ public class GlobalExceptionHandler {
                 error.getField(),
                 error.getDefaultMessage()
         );
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ProblemDetail handleMalformedJson(
+            HttpMessageNotReadableException ex,
+            HttpServletRequest request
+    ) {
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST,
+                "Malformed JSON request body"
+        );
+
+        problem.setTitle("Invalid JSON");
+        problem.setType(URI.create(
+                "https://api.asterion.com/problems/invalid-json"
+        ));
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("timestamp", Instant.now());
+
+        return problem;
     }
 }

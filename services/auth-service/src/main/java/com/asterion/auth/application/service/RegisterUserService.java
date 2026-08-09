@@ -1,6 +1,6 @@
 package com.asterion.auth.application.service;
 
-import com.asterion.auth.application.command.RegisterUserCommand;
+import com.asterion.auth.application.port.in.RegisterUserCommand;
 import com.asterion.auth.domain.exception.EmailAlreadyRegisteredException;
 import com.asterion.auth.application.port.in.RegisterUserUseCase;
 import com.asterion.auth.application.port.out.PasswordHasher;

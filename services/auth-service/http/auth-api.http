@@ -1,0 +1,91 @@
+@host = http://localhost:8080
+@contentType = application/json
+
+### ------------------------------------------------------------
+### Health check
+### ------------------------------------------------------------
+
+GET {{host}}/actuator/health
+
+### ------------------------------------------------------------
+### Register - success
+### ------------------------------------------------------------
+
+POST {{host}}/api/v1/users/register
+Content-Type: {{contentType}}
+
+{
+  "email": "alice@example.com",
+  "password": "Secret123!"
+}
+
+### ------------------------------------------------------------
+### Register - duplicate email
+### ------------------------------------------------------------
+
+POST {{host}}/api/v1/users/register
+Content-Type: {{contentType}}
+
+{
+  "email": "alice@example.com",
+  "password": "Secret123!"
+}
+
+### ------------------------------------------------------------
+### Login - success
+### Captures JWT automatically into {{authToken}}
+### ------------------------------------------------------------
+
+POST {{host}}/api/v1/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "alice@example.com",
+  "password": "Secret123!"
+}
+
+> {%
+    client.global.set("authToken", response.body.accessToken);
+%}
+
+### ------------------------------------------------------------
+### Login - wrong password
+### ------------------------------------------------------------
+
+POST {{host}}/api/v1/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "alice@example.com",
+  "password": "WrongPassword"
+}
+
+### ------------------------------------------------------------
+### Login - validation failure
+### ------------------------------------------------------------
+
+POST {{host}}/api/v1/auth/login
+Content-Type: {{contentType}}
+
+{}
+
+### ------------------------------------------------------------
+### Current user - authenticated
+### Uses the token captured from the successful login
+### ------------------------------------------------------------
+
+GET {{host}}/api/v1/users/me
+Authorization: Bearer {{authToken}}
+
+### ------------------------------------------------------------
+### Current user - without token
+### ------------------------------------------------------------
+
+GET {{host}}/api/v1/users/me
+
+### ------------------------------------------------------------
+### Current user - invalid token
+### ------------------------------------------------------------
+
+GET {{host}}/api/v1/users/me
+Authorization: Bearer invalid-token

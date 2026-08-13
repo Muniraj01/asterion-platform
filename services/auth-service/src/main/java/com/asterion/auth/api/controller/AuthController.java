@@ -1,11 +1,14 @@
 package com.asterion.auth.api.controller;
 
 import com.asterion.auth.api.request.LoginRequest;
+import com.asterion.auth.api.request.RefreshTokenRequest;
 import com.asterion.auth.api.response.LoginResponse;
 import com.asterion.auth.application.port.in.AuthenticateUserCommand;
 import com.asterion.auth.application.port.in.AuthenticateUserUseCase;
+import com.asterion.auth.application.port.in.RefreshAccessTokenCommand;
+import com.asterion.auth.application.port.in.RefreshAccessTokenUseCase;
+import com.asterion.auth.application.port.out.JwtTokenProvider;
 import com.asterion.auth.domain.model.User;
-import com.asterion.auth.infrastructure.security.JwtTokenProvider;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,13 +18,16 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthenticateUserUseCase authenticateUserUseCase;
+    private final RefreshAccessTokenUseCase refreshAccessTokenUseCase;
     private final JwtTokenProvider jwtTokenProvider;
 
     public AuthController(
             AuthenticateUserUseCase authenticateUserUseCase,
+            RefreshAccessTokenUseCase refreshAccessTokenUseCase,
             JwtTokenProvider jwtTokenProvider
     ) {
         this.authenticateUserUseCase = authenticateUserUseCase;
+        this.refreshAccessTokenUseCase = refreshAccessTokenUseCase;
         this.jwtTokenProvider = jwtTokenProvider;
     }
 
@@ -37,13 +43,36 @@ public class AuthController {
                 )
         );
 
-        String token = jwtTokenProvider.generateToken(user);
+        String accessToken = jwtTokenProvider.generateAccessToken(user);
+        String refreshToken = refreshAccessTokenUseCase.issue(user);
 
         return ResponseEntity.ok(
                 new LoginResponse(
-                        token,
+                        accessToken,
+                        refreshToken,
                         "Bearer",
-                        jwtTokenProvider.expirationSeconds()
+                        jwtTokenProvider.accessTokenExpirationSeconds()
+                )
+        );
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<LoginResponse> refresh(
+            @Valid @RequestBody RefreshTokenRequest request
+    ) {
+
+        String newAccessToken = refreshAccessTokenUseCase.refresh(
+                new RefreshAccessTokenCommand(
+                        request.refreshToken()
+                )
+        );
+
+        return ResponseEntity.ok(
+                new LoginResponse(
+                        newAccessToken,
+                        request.refreshToken(),
+                        "Bearer",
+                        jwtTokenProvider.accessTokenExpirationSeconds()
                 )
         );
     }

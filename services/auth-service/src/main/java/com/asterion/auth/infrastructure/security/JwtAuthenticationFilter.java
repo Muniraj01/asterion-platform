@@ -1,5 +1,6 @@
 package com.asterion.auth.infrastructure.security;
 
+import com.asterion.auth.application.port.out.JwtTokenProvider;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

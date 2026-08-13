@@ -28,3 +28,10 @@ security:
   jwt:
     secret: very-secret-development-key-change-in-production-123456789
     expiration-seconds: 3600
+
+asterion:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:change-me-change-me-change-me-change-me}
+      access-token-expiration-seconds: 3600
+      refresh-token-expiration-seconds: 2592000

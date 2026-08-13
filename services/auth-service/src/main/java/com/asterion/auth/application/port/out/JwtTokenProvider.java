@@ -6,11 +6,15 @@ public interface JwtTokenProvider {
 
     String generateAccessToken(User user);
 
-    String generateRefreshToken(User user);
+    String generateRefreshToken();
 
     boolean isValid(String token);
 
-    String extractSubject(String token);
+    String extractUserId(String token);
 
     String extractEmail(String token);
+
+    long accessTokenExpirationSeconds();
+
+    long refreshTokenExpirationSeconds();
 }

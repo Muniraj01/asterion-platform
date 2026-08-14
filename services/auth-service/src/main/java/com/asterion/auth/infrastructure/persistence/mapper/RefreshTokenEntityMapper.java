@@ -20,6 +20,7 @@ public final class RefreshTokenEntityMapper {
         entity.setExpiresAt(domain.expiresAt());
         entity.setCreatedAt(domain.createdAt());
         entity.setRevokedAt(domain.revokedAt());
+        entity.setReplacedByTokenId(domain.replacedByTokenId());
 
         return entity;
     }
@@ -32,7 +33,8 @@ public final class RefreshTokenEntityMapper {
                 entity.getTokenHash(),
                 entity.getExpiresAt(),
                 entity.getCreatedAt(),
-                entity.getRevokedAt()
+                entity.getRevokedAt(),
+                entity.getReplacedByTokenId()
         );
     }
 }

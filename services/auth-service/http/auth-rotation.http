@@ -1,0 +1,40 @@
+### Login
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "refresh@example.com",
+  "password": "Secret123!"
+}
+
+> {%
+    client.global.set("refresh_token", response.body.refreshToken);
+%}
+
+### First refresh (should succeed)
+POST http://localhost:8080/api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refresh_token}}"
+}
+
+> {%
+    client.global.set("rotated_refresh_token", response.body.refreshToken);
+%}
+
+### Reuse old refresh token (should fail with 401)
+POST http://localhost:8080/api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refresh_token}}"
+}
+
+### Use rotated refresh token (should succeed)
+POST http://localhost:8080/api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{rotated_refresh_token}}"
+}

@@ -30,6 +30,9 @@ public class RefreshTokenEntity {
     @Column(name = "revoked_at")
     private Instant revokedAt;
 
+    @Column(name = "replaced_by_token_id")
+    private UUID replacedByTokenId;
+
     public RefreshTokenEntity() {
     }
 
@@ -79,5 +82,13 @@ public class RefreshTokenEntity {
 
     public void setRevokedAt(Instant revokedAt) {
         this.revokedAt = revokedAt;
+    }
+
+    public UUID getReplacedByTokenId() {
+        return replacedByTokenId;
+    }
+
+    public void setReplacedByTokenId(UUID replacedByTokenId) {
+        this.replacedByTokenId = replacedByTokenId;
     }
 }

@@ -2,6 +2,7 @@ package com.asterion.auth.application.service;
 
 import com.asterion.auth.application.port.in.RefreshAccessTokenCommand;
 import com.asterion.auth.application.port.in.RefreshAccessTokenUseCase;
+import com.asterion.auth.application.port.in.TokenPair;
 import com.asterion.auth.application.port.out.JwtTokenProvider;
 import com.asterion.auth.application.port.out.RefreshTokenRepository;
 import com.asterion.auth.application.port.out.TokenHasher;
@@ -37,7 +38,7 @@ public class RefreshAccessTokenService
     }
 
     @Override
-    public String refresh(
+    public TokenPair refresh(
             RefreshAccessTokenCommand command
     ) {
 
@@ -45,37 +46,61 @@ public class RefreshAccessTokenService
                 command.refreshToken()
         );
 
-        RefreshToken refreshToken =
+        RefreshToken current =
                 refreshTokenRepository.findByTokenHash(tokenHash)
                         .orElseThrow(
                                 InvalidCredentialsException::new
                         );
 
-        if (refreshToken.isExpired()
-                || refreshToken.isRevoked()) {
+        if (current.isExpired()
+                || current.isRevoked()) {
 
             throw new InvalidCredentialsException();
         }
 
         User user = userRepository.findById(
-                        refreshToken.userId()
+                        current.userId()
                 )
                 .orElseThrow(
                         InvalidCredentialsException::new
                 );
 
-        return jwtTokenProvider.generateAccessToken(user);
+        // Create replacement refresh token
+        String newRawRefreshToken =
+                UUID.randomUUID().toString();
+
+        RefreshToken replacement =
+                RefreshToken.issue(
+                        user.id(),
+                        tokenHasher.hash(newRawRefreshToken),
+                        Instant.now().plus(Duration.ofDays(30))
+                );
+
+        refreshTokenRepository.save(replacement);
+
+        // Revoke old token
+        refreshTokenRepository.revoke(
+                current.revoke(replacement.id().value())
+        );
+
+        // Create new access token
+        String newAccessToken =
+                jwtTokenProvider.generateAccessToken(user);
+
+        return new TokenPair(
+                newAccessToken,
+                newRawRefreshToken
+        );
     }
 
     @Override
     public String issue(User user) {
 
         String rawRefreshToken = UUID.randomUUID().toString();
-        String tokenHash = tokenHasher.hash(rawRefreshToken);
 
         RefreshToken refreshToken = RefreshToken.issue(
                 user.id(),
-                tokenHash,
+                tokenHasher.hash(rawRefreshToken),
                 Instant.now().plus(Duration.ofDays(30))
         );
 

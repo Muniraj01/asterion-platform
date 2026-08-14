@@ -4,7 +4,9 @@ import com.asterion.auth.domain.model.User;
 
 public interface RefreshAccessTokenUseCase {
 
-    String issue(User user);
+    TokenPair refresh(
+            RefreshAccessTokenCommand command
+    );
 
-    String refresh(RefreshAccessTokenCommand command);
+    String issue(User user);
 }

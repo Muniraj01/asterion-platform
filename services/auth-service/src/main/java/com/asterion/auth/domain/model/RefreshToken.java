@@ -1,7 +1,7 @@
 package com.asterion.auth.domain.model;
 
 import java.time.Instant;
-import java.util.Objects;
+import java.util.UUID;
 
 public final class RefreshToken {
 
@@ -11,6 +11,7 @@ public final class RefreshToken {
     private final Instant expiresAt;
     private final Instant createdAt;
     private final Instant revokedAt;
+    private final UUID replacedByTokenId;
 
     public RefreshToken(
             RefreshTokenId id,
@@ -18,14 +19,16 @@ public final class RefreshToken {
             String tokenHash,
             Instant expiresAt,
             Instant createdAt,
-            Instant revokedAt
+            Instant revokedAt,
+            UUID replacedByTokenId
     ) {
-        this.id = Objects.requireNonNull(id);
-        this.userId = Objects.requireNonNull(userId);
-        this.tokenHash = Objects.requireNonNull(tokenHash);
-        this.expiresAt = Objects.requireNonNull(expiresAt);
-        this.createdAt = Objects.requireNonNull(createdAt);
+        this.id = id;
+        this.userId = userId;
+        this.tokenHash = tokenHash;
+        this.expiresAt = expiresAt;
+        this.createdAt = createdAt;
         this.revokedAt = revokedAt;
+        this.replacedByTokenId = replacedByTokenId;
     }
 
     public static RefreshToken issue(
@@ -39,6 +42,7 @@ public final class RefreshToken {
                 tokenHash,
                 expiresAt,
                 Instant.now(),
+                null,
                 null
         );
     }
@@ -51,14 +55,15 @@ public final class RefreshToken {
         return revokedAt != null;
     }
 
-    public RefreshToken revoke() {
+    public RefreshToken revoke(UUID replacementTokenId) {
         return new RefreshToken(
                 id,
                 userId,
                 tokenHash,
                 expiresAt,
                 createdAt,
-                Instant.now()
+                Instant.now(),
+                replacementTokenId
         );
     }
 
@@ -84,5 +89,9 @@ public final class RefreshToken {
 
     public Instant revokedAt() {
         return revokedAt;
+    }
+
+    public UUID replacedByTokenId() {
+        return replacedByTokenId;
     }
 }

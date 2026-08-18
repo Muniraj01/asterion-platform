@@ -1,6 +1,7 @@
 package com.asterion.auth.api.controller;
 
 import com.asterion.auth.api.response.CurrentUserResponse;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -8,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/users")
 public class UserController {
 
+    @PreAuthorize("hasRole('USER')")
     @GetMapping("/me")
     public CurrentUserResponse currentUser(
             Authentication authentication
@@ -17,5 +19,11 @@ public class UserController {
                 authentication.getName(),
                 authentication.isAuthenticated()
         );
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/admin")
+    public String adminEndpoint() {
+        return "Admin access granted";
     }
 }

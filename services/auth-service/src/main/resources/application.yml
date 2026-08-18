@@ -3,14 +3,13 @@ spring:
     name: auth-service
 
   datasource:
-    url: jdbc:postgresql://localhost:55432/asterion_auth
+    url: jdbc:postgresql://localhost:55433/asterion_auth
     username: asterion
     password: asterion
 
   jpa:
     hibernate:
       ddl-auto: validate
-
     properties:
       hibernate:
         format_sql: true
@@ -24,14 +23,14 @@ logging:
     org.hibernate.SQL: debug
     org.springframework.security: info
 
-security:
-  jwt:
-    secret: very-secret-development-key-change-in-production-123456789
-    expiration-seconds: 3600
-
 asterion:
   security:
     jwt:
       secret: ${JWT_SECRET:change-me-change-me-change-me-change-me}
       access-token-expiration-seconds: 3600
       refresh-token-expiration-seconds: 2592000
+
+    bootstrap-admin:
+      enabled: true
+      email: admin@asterion.com
+      password: ${ASTERION_BOOTSTRAP_ADMIN_PASSWORD}

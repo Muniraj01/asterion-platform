@@ -12,57 +12,43 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
-public class AuthenticateUserService
-        implements AuthenticateUserUseCase {
+public class AuthenticateUserService implements AuthenticateUserUseCase {
 
     private static final Logger log =
-            LoggerFactory.getLogger(
-                    AuthenticateUserService.class
-            );
+            LoggerFactory.getLogger(AuthenticateUserService.class);
 
     private final UserRepository userRepository;
     private final PasswordHasher passwordHasher;
 
-    public AuthenticateUserService(
-            UserRepository userRepository,
-            PasswordHasher passwordHasher
-    ) {
+    public AuthenticateUserService(UserRepository userRepository,
+                                   PasswordHasher passwordHasher) {
         this.userRepository = userRepository;
         this.passwordHasher = passwordHasher;
     }
 
     @Override
-    public User authenticate(
-            AuthenticateUserCommand command
-    ) {
+    public User authenticate(AuthenticateUserCommand command) {
+        log.info("Authenticating user: {}", command.email());
 
-        log.info("Authenticating user: {}",
-                command.email());
-
-        EmailAddress email =
-                new EmailAddress(command.email());
-
+        EmailAddress email = new EmailAddress(command.email());
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> {
-                    log.warn("User not found: {}",
-                            command.email());
-
+                    log.warn("User not found: {}", command.email());
                     return new InvalidCredentialsException();
                 });
 
-        log.info("User found: {}",
-                user.email().value());
+        log.info("User found: {}", user.email().value());
 
-        boolean valid = passwordHasher.matches(
-                command.password(),
-                user.passwordHash()
-        );
-
-        log.info("Password valid: {}", valid);
-
-        if (!valid) {
+        if (!user.isActive()) {
+            log.warn("Inactive user attempted authentication: {}", command.email());
             throw new InvalidCredentialsException();
         }
+
+        boolean valid = passwordHasher.matches(command.password(), user.passwordHash());
+        log.info("Password valid: {}", valid);
+
+        if (!valid)
+            throw new InvalidCredentialsException();
 
         return user;
     }

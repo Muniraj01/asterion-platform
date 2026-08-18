@@ -17,7 +17,8 @@ public final class UserEntityMapper {
                 user.email().value(),
                 user.passwordHash().value(),
                 user.isActive(),
-                user.createdAt()
+                user.createdAt(),
+                user.roles()
         );
     }
 
@@ -27,7 +28,8 @@ public final class UserEntityMapper {
                 new EmailAddress(entity.getEmail()),
                 new PasswordHash(entity.getPasswordHash()),
                 entity.getCreatedAt(),
-                entity.isActive()
+                entity.isActive(),
+                entity.getRoles()
         );
     }
 }

@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 @Component
@@ -37,11 +38,19 @@ public class JwtTokenProviderImpl implements JwtTokenProvider {
     @Override
     public String generateAccessToken(User user) {
         Date now = new Date();
-        Date expiry = new Date(now.getTime() + accessTokenExpirationSeconds * 1000);
+        Date expiry = new Date(
+                now.getTime() + accessTokenExpirationSeconds * 1000
+        );
 
         return Jwts.builder()
                 .subject(user.id().toString())
                 .claim("email", user.email().value())
+                .claim(
+                        "roles",
+                        user.roles().stream()
+                                .map(Enum::name)
+                                .toList()
+                )
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(secretKey)
@@ -76,6 +85,20 @@ public class JwtTokenProviderImpl implements JwtTokenProvider {
     @Override
     public String extractEmail(String token) {
         return claims(token).get("email", String.class);
+    }
+
+    @Override
+    public List<String> extractRoles(String token) {
+        Object roles = claims(token).get("roles");
+
+        if (!(roles instanceof List<?> roleList)) {
+            return List.of();
+        }
+
+        return roleList.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .toList();
     }
 
     @Override

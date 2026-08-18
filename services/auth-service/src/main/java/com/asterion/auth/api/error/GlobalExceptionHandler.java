@@ -7,6 +7,7 @@ import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -163,5 +164,37 @@ public class GlobalExceptionHandler {
         problem.setProperty("timestamp", Instant.now());
 
         return problem;
+    }
+
+    @ExceptionHandler(AuthorizationDeniedException.class)
+    public ProblemDetail handleAuthorizationDenied(
+            AuthorizationDeniedException ex,
+            HttpServletRequest request
+    ) {
+        ProblemDetail problemDetail =
+                ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+
+        problemDetail.setType(
+                URI.create(
+                        "https://api.asterion.com/problems/access-denied"
+                )
+        );
+
+        problemDetail.setTitle("Access denied");
+
+        problemDetail.setDetail(
+                "You do not have permission to access this resource"
+        );
+
+        problemDetail.setInstance(
+                URI.create(request.getRequestURI())
+        );
+
+        problemDetail.setProperty(
+                "timestamp",
+                Instant.now()
+        );
+
+        return problemDetail;
     }
 }

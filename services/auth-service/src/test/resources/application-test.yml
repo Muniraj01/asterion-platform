@@ -1,0 +1,4 @@
+asterion:
+  security:
+    bootstrap-admin:
+      password: test-bootstrap-admin-password

@@ -33,6 +33,9 @@ public class RefreshTokenEntity {
     @Column(name = "replaced_by_token_id")
     private UUID replacedByTokenId;
 
+    @Column(name = "family_id", nullable = false)
+    private UUID familyId;
+
     public RefreshTokenEntity() {
     }
 
@@ -90,5 +93,13 @@ public class RefreshTokenEntity {
 
     public void setReplacedByTokenId(UUID replacedByTokenId) {
         this.replacedByTokenId = replacedByTokenId;
+    }
+
+    public UUID getFamilyId() {
+        return familyId;
+    }
+
+    public void setFamilyId(UUID familyId) {
+        this.familyId = familyId;
     }
 }

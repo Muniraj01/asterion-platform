@@ -11,7 +11,7 @@ import com.asterion.auth.domain.exception.InvalidCredentialsException;
 import com.asterion.auth.domain.model.RefreshToken;
 import com.asterion.auth.domain.model.User;
 import org.springframework.stereotype.Service;
-
+import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -37,24 +37,29 @@ public class RefreshAccessTokenService
         this.tokenHasher = tokenHasher;
     }
 
+    @Transactional
     @Override
     public TokenPair refresh(
             RefreshAccessTokenCommand command
     ) {
-
         String tokenHash = tokenHasher.hash(
                 command.refreshToken()
         );
 
         RefreshToken current =
-                refreshTokenRepository.findByTokenHash(tokenHash)
-                        .orElseThrow(
-                                InvalidCredentialsException::new
-                        );
+                refreshTokenRepository.findByTokenHashForUpdate(tokenHash)
+                        .orElseThrow(InvalidCredentialsException::new);
 
-        if (current.isExpired()
-                || current.isRevoked()) {
+        if (current.isExpired()) {
+            throw new InvalidCredentialsException();
+        }
 
+        if (current.isRevoked()) {
+            if (current.replacedByTokenId() != null) {
+                refreshTokenRepository.revokeFamily(
+                        current.familyId()
+                );
+            }
             throw new InvalidCredentialsException();
         }
 
@@ -73,7 +78,8 @@ public class RefreshAccessTokenService
                 RefreshToken.issue(
                         user.id(),
                         tokenHasher.hash(newRawRefreshToken),
-                        Instant.now().plus(Duration.ofDays(30))
+                        Instant.now().plus(Duration.ofDays(30)),
+                        current.familyId()
                 );
 
         refreshTokenRepository.save(replacement);

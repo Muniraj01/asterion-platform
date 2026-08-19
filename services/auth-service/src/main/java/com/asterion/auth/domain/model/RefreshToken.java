@@ -1,6 +1,7 @@
 package com.asterion.auth.domain.model;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 public final class RefreshToken {
@@ -12,6 +13,7 @@ public final class RefreshToken {
     private final Instant createdAt;
     private final Instant revokedAt;
     private final UUID replacedByTokenId;
+    private final UUID familyId;
 
     public RefreshToken(
             RefreshTokenId id,
@@ -20,21 +22,37 @@ public final class RefreshToken {
             Instant expiresAt,
             Instant createdAt,
             Instant revokedAt,
-            UUID replacedByTokenId
+            UUID replacedByTokenId,
+            UUID familyId
     ) {
-        this.id = id;
-        this.userId = userId;
-        this.tokenHash = tokenHash;
-        this.expiresAt = expiresAt;
-        this.createdAt = createdAt;
+        this.id = Objects.requireNonNull(id);
+        this.userId = Objects.requireNonNull(userId);
+        this.tokenHash = Objects.requireNonNull(tokenHash);
+        this.expiresAt = Objects.requireNonNull(expiresAt);
+        this.createdAt = Objects.requireNonNull(createdAt);
         this.revokedAt = revokedAt;
         this.replacedByTokenId = replacedByTokenId;
+        this.familyId = Objects.requireNonNull(familyId);
     }
 
     public static RefreshToken issue(
             UserId userId,
             String tokenHash,
             Instant expiresAt
+    ) {
+        return issue(
+                userId,
+                tokenHash,
+                expiresAt,
+                UUID.randomUUID()
+        );
+    }
+
+    public static RefreshToken issue(
+            UserId userId,
+            String tokenHash,
+            Instant expiresAt,
+            UUID familyId
     ) {
         return new RefreshToken(
                 RefreshTokenId.newId(),
@@ -43,7 +61,8 @@ public final class RefreshToken {
                 expiresAt,
                 Instant.now(),
                 null,
-                null
+                null,
+                familyId
         );
     }
 
@@ -56,6 +75,10 @@ public final class RefreshToken {
     }
 
     public RefreshToken revoke(UUID replacementTokenId) {
+        if (isRevoked()) {
+            return this;
+        }
+
         return new RefreshToken(
                 id,
                 userId,
@@ -63,7 +86,25 @@ public final class RefreshToken {
                 expiresAt,
                 createdAt,
                 Instant.now(),
-                replacementTokenId
+                replacementTokenId,
+                familyId
+        );
+    }
+
+    public RefreshToken revoke() {
+        if (isRevoked()) {
+            return this;
+        }
+
+        return new RefreshToken(
+                id,
+                userId,
+                tokenHash,
+                expiresAt,
+                createdAt,
+                Instant.now(),
+                replacedByTokenId,
+                familyId
         );
     }
 
@@ -93,5 +134,9 @@ public final class RefreshToken {
 
     public UUID replacedByTokenId() {
         return replacedByTokenId;
+    }
+
+    public UUID familyId() {
+        return familyId;
     }
 }

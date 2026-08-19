@@ -5,6 +5,7 @@ import com.asterion.auth.domain.model.RefreshTokenId;
 import com.asterion.auth.domain.model.UserId;
 
 import java.util.Optional;
+import java.util.UUID;
 
 public interface RefreshTokenRepository {
 
@@ -17,4 +18,8 @@ public interface RefreshTokenRepository {
     void revoke(RefreshToken token);
 
     void revokeAllByUserId(UserId userId);
+
+    void revokeFamily(UUID familyId);
+
+    Optional<RefreshToken> findByTokenHashForUpdate(String tokenHash);
 }

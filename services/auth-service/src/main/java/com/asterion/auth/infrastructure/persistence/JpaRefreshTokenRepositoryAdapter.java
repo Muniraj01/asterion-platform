@@ -9,6 +9,7 @@ import com.asterion.auth.infrastructure.persistence.springdata.SpringDataRefresh
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 public class JpaRefreshTokenRepositoryAdapter
@@ -45,5 +46,18 @@ public class JpaRefreshTokenRepositoryAdapter
     @Override
     public void revokeAllByUserId(UserId userId) {
         repository.revokeAllByUserId(userId.value());
+    }
+
+    @Override
+    public void revokeFamily(UUID familyId) {
+        repository.revokeFamily(familyId);
+    }
+
+    @Override
+    public Optional<RefreshToken> findByTokenHashForUpdate(
+            String tokenHash
+    ) {
+        return repository.findByTokenHashForUpdate(tokenHash)
+                .map(RefreshTokenEntityMapper::toDomain);
     }
 }

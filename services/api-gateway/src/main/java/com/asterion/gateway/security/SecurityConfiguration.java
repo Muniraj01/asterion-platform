@@ -18,59 +18,32 @@ public class SecurityConfiguration {
 
     @Bean
     SecurityWebFilterChain securityWebFilterChain(
-            ServerHttpSecurity http) {
+            ServerHttpSecurity http,
+            GatewayAuthenticationEntryPoint gatewayAuthenticationEntryPoint,
+            GatewayAccessDeniedHandler gatewayAccessDeniedHandler) {
 
-        JwtAuthenticationConverter jwtAuthenticationConverter =
-                new JwtAuthenticationConverter();
-
-        jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(jwt -> {
-
-            List<String> roles = jwt.getClaimAsStringList("roles");
-
-            if (roles == null) {
-                roles = List.of();
-            }
-
-            return roles.stream()
-                    .<GrantedAuthority>map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-                    .toList();
-        });
-
-        return http
-                .csrf(ServerHttpSecurity.CsrfSpec::disable)
-
+        return http.csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(exchange -> exchange
-
-                        // Public authentication endpoints
                         .pathMatchers(
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/refresh"
                         ).permitAll()
 
-                        // Administrative APIs
                         .pathMatchers("/api/v1/admin/**")
                         .hasRole("ADMIN")
 
-                        // User APIs
                         .pathMatchers("/api/v1/users/**")
                         .hasAnyRole("USER", "ADMIN")
 
-                        // Everything else requires authentication
                         .anyExchange()
                         .authenticated()
                 )
 
-                .oauth2ResourceServer(oauth2 ->
-                        oauth2.jwt(jwt ->
-                                jwt.jwtAuthenticationConverter(
-                                        new ReactiveJwtAuthenticationConverterAdapter(
-                                                jwtAuthenticationConverter
-                                        )
-                                )
-                        )
-                )
-
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .authenticationEntryPoint(gatewayAuthenticationEntryPoint)
+                        .accessDeniedHandler(gatewayAccessDeniedHandler)
+                        .jwt(jwt -> {}))
                 .build();
     }
 }

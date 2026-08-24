@@ -11,7 +11,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
-
+import io.netty.channel.AbstractChannel;
+import java.net.ConnectException;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -62,9 +63,18 @@ public class GlobalGatewayErrorHandler implements ErrorWebExceptionHandler {
     }
 
     private HttpStatus determineStatus(Throwable throwable) {
-        if (throwable instanceof ResponseStatusException respStatusException) {
-            return HttpStatus.valueOf(respStatusException.getStatusCode().value());
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof ResponseStatusException respStatusException) {
+                return HttpStatus.valueOf(respStatusException.getStatusCode().value());
+            }
+
+            if (current instanceof ConnectException) {
+                return HttpStatus.SERVICE_UNAVAILABLE;
+            }
+            current = current.getCause();
         }
+
         return HttpStatus.INTERNAL_SERVER_ERROR;
     }
 

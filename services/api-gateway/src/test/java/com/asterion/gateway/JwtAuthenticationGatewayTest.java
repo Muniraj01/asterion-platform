@@ -25,9 +25,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
-)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class JwtAuthenticationGatewayTest {
 
     private static MockWebServer mockAuthService;
@@ -51,15 +49,13 @@ class JwtAuthenticationGatewayTest {
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add(
-                "ASTERION_AUTH_SERVICE_URL",
+        registry.add("ASTERION_AUTH_SERVICE_URL",
                 () -> mockAuthService.url("/").toString()
         );
     }
 
     @Test
     void shouldRejectProtectedRequestWithoutJwt() {
-
         webTestClient
                 .get()
                 .uri("/api/v1/users/me")
@@ -70,14 +66,10 @@ class JwtAuthenticationGatewayTest {
 
     @Test
     void shouldRejectProtectedRequestWithInvalidJwt() {
-
         webTestClient
                 .get()
                 .uri("/api/v1/users/me")
-                .header(
-                        HttpHeaders.AUTHORIZATION,
-                        "Bearer invalid-token"
-                )
+                .header(HttpHeaders.AUTHORIZATION, "Bearer invalid-token")
                 .exchange()
                 .expectStatus()
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
@@ -85,50 +77,36 @@ class JwtAuthenticationGatewayTest {
 
     @Test
     void shouldAuthenticateRequestWithValidJwt() throws InterruptedException {
-
-        mockAuthService.enqueue(
-                new MockResponse()
-                        .setResponseCode(200)
-                        .setHeader("Content-Type", "application/json")
-                        .setBody("""
-                            {
-                              "id": "11111111-1111-1111-1111-111111111111",
-                              "email": "test@example.com"
-                            }
-                            """)
+        mockAuthService.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                    {
+                      "id": "11111111-1111-1111-1111-111111111111",
+                      "email": "test@example.com"
+                    }
+                    """)
         );
 
         String token = createValidToken(List.of("USER"));
-
         webTestClient
                 .get()
                 .uri("/api/v1/users/me")
-                .header(
-                        HttpHeaders.AUTHORIZATION,
-                        "Bearer " + token
-                )
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .exchange()
                 .expectStatus()
                 .isOk();
 
         var recordedRequest = mockAuthService.takeRequest();
-
-        assertThat(recordedRequest.getMethod())
-                .isEqualTo("GET");
-
-        assertThat(recordedRequest.getPath())
-                .isEqualTo("/api/v1/users/me");
+        assertThat(recordedRequest.getMethod()).isEqualTo("GET");
+        assertThat(recordedRequest.getPath()).isEqualTo("/api/v1/users/me");
     }
 
     private String createValidToken(List<String> roles) {
-
         SecretKey key = Keys.hmacShaKeyFor(
-                "change-me-change-me-change-me-change-me"
-                        .getBytes(StandardCharsets.UTF_8)
-        );
+                "change-me-change-me-change-me-change-me".getBytes(StandardCharsets.UTF_8));
 
         Instant now = Instant.now();
-
         return Jwts.builder()
                 .subject("11111111-1111-1111-1111-111111111111")
                 .claim("email", "test@example.com")
@@ -140,106 +118,64 @@ class JwtAuthenticationGatewayTest {
     }
 
     @Test
-    void shouldForwardAuthorizationHeaderToDownstreamService()
-            throws InterruptedException {
-
-        mockAuthService.enqueue(
-                new MockResponse()
-                        .setResponseCode(200)
-                        .setHeader("Content-Type", "application/json")
-                        .setBody("""
-                            {
-                              "email": "test@example.com",
-                              "authenticated": true
-                            }
-                            """)
-        );
-
+    void shouldForwardAuthorizationHeaderToDownstreamService() throws InterruptedException {
+        mockAuthResponse();
         String token = createValidToken(List.of("USER"));
-
         webTestClient
                 .get()
                 .uri("/api/v1/users/me")
-                .header(
-                        HttpHeaders.AUTHORIZATION,
-                        "Bearer " + token
-                )
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .exchange()
                 .expectStatus()
                 .isOk();
 
         var recordedRequest = mockAuthService.takeRequest();
-
         assertThat(recordedRequest.getHeader(HttpHeaders.AUTHORIZATION))
                 .isEqualTo("Bearer " + token);
     }
 
-    @Test
-    void shouldPropagateAuthenticatedUserIdentityToDownstreamService()
-            throws InterruptedException {
-
-        mockAuthService.enqueue(
-                new MockResponse()
-                        .setResponseCode(200)
-                        .setHeader("Content-Type", "application/json")
-                        .setBody("""
-                            {
-                              "email": "test@example.com",
-                              "authenticated": true
-                            }
-                            """)
+    private static void mockAuthResponse() {
+        mockAuthService.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                    {
+                      "email": "test@example.com",
+                      "authenticated": true
+                    }
+                    """)
         );
+    }
 
+    @Test
+    void shouldPropagateAuthenticatedUserIdentityToDownstreamService() throws InterruptedException {
+        mockAuthResponse();
         String token = createValidToken(List.of("USER"));
-
         webTestClient
                 .get()
                 .uri("/api/v1/users/me")
-                .header(
-                        HttpHeaders.AUTHORIZATION,
-                        "Bearer " + token
-                )
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .exchange()
                 .expectStatus()
                 .isOk();
 
         var recordedRequest = mockAuthService.takeRequest();
-
         assertThat(recordedRequest.getHeader("X-User-Id"))
                 .isEqualTo("11111111-1111-1111-1111-111111111111");
-
         assertThat(recordedRequest.getHeader("X-User-Email"))
                 .isEqualTo("test@example.com");
-
         assertThat(recordedRequest.getHeader("X-User-Roles"))
                 .isEqualTo("USER");
     }
 
     @Test
-    void shouldNotTrustClientSuppliedIdentityHeaders()
-            throws InterruptedException {
-
-        mockAuthService.enqueue(
-                new MockResponse()
-                        .setResponseCode(200)
-                        .setHeader("Content-Type", "application/json")
-                        .setBody("""
-                            {
-                              "email": "test@example.com",
-                              "authenticated": true
-                            }
-                            """)
-        );
-
+    void shouldNotTrustClientSuppliedIdentityHeaders() throws InterruptedException {
+        mockAuthResponse();
         String token = createValidToken(List.of("USER"));
-
         webTestClient
                 .get()
                 .uri("/api/v1/users/me")
-                .header(
-                        HttpHeaders.AUTHORIZATION,
-                        "Bearer " + token
-                )
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .header("X-User-Id", "attacker-user-id")
                 .header("X-User-Email", "attacker@example.com")
                 .header("X-User-Roles", "ADMIN")
@@ -248,41 +184,32 @@ class JwtAuthenticationGatewayTest {
                 .isOk();
 
         var recordedRequest = mockAuthService.takeRequest();
-
         assertThat(recordedRequest.getHeader("X-User-Id"))
                 .isEqualTo("11111111-1111-1111-1111-111111111111");
-
         assertThat(recordedRequest.getHeader("X-User-Email"))
                 .isEqualTo("test@example.com");
-
         assertThat(recordedRequest.getHeader("X-User-Roles"))
                 .isEqualTo("USER");
     }
 
     @Test
     void shouldAllowUserToAccessUserEndpoint() throws InterruptedException {
-
-        mockAuthService.enqueue(
-                new MockResponse()
-                        .setResponseCode(200)
-                        .setHeader("Content-Type", "application/json")
-                        .setBody("""
-                        {
-                          "id": "11111111-1111-1111-1111-111111111111",
-                          "email": "test@example.com"
-                        }
-                        """)
+        mockAuthService.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                {
+                  "id": "11111111-1111-1111-1111-111111111111",
+                  "email": "test@example.com"
+                }
+                """)
         );
 
         String token = createValidToken(List.of("USER"));
-
         webTestClient
                 .get()
                 .uri("/api/v1/users/me")
-                .header(
-                        HttpHeaders.AUTHORIZATION,
-                        "Bearer " + token
-                )
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .exchange()
                 .expectStatus()
                 .isOk();
@@ -292,16 +219,11 @@ class JwtAuthenticationGatewayTest {
 
     @Test
     void shouldRejectUserFromAdminEndpoint() {
-
         String token = createValidToken(List.of("USER"));
-
         webTestClient
                 .get()
                 .uri("/api/v1/admin/users")
-                .header(
-                        HttpHeaders.AUTHORIZATION,
-                        "Bearer " + token
-                )
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .exchange()
                 .expectStatus()
                 .isForbidden();
@@ -309,40 +231,31 @@ class JwtAuthenticationGatewayTest {
 
     @Test
     void shouldAllowAdminToAccessAdminEndpoint() throws InterruptedException {
-
-        mockAuthService.enqueue(
-                new MockResponse()
-                        .setResponseCode(200)
-                        .setHeader("Content-Type", "application/json")
-                        .setBody("""
-                        {
-                          "users": []
-                        }
-                        """)
+        mockAuthService.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                {
+                  "users": []
+                }
+                """)
         );
 
         String token = createValidToken(List.of("ADMIN"));
-
         webTestClient
                 .get()
                 .uri("/api/v1/admin/users")
-                .header(
-                        HttpHeaders.AUTHORIZATION,
-                        "Bearer " + token
-                )
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .exchange()
                 .expectStatus()
                 .isOk();
 
         var recordedRequest = mockAuthService.takeRequest();
-
-        assertThat(recordedRequest.getPath())
-                .isEqualTo("/api/v1/admin/users");
+        assertThat(recordedRequest.getPath()).isEqualTo("/api/v1/admin/users");
     }
 
     @Test
     void shouldRejectUnauthenticatedAdminRequest() {
-
         webTestClient
                 .get()
                 .uri("/api/v1/admin/users")

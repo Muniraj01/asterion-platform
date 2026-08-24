@@ -6,17 +6,32 @@ spring:
     gateway:
       server:
         webflux:
-          routes:
 
+          routes:
             - id: auth-service
               uri: ${ASTERION_AUTH_SERVICE_URL:http://localhost:8081}
               predicates:
                 - Path=/api/v1/auth/**,/api/v1/users/**
+              filters:
+                - name: Retry
+                  args:
+                    retries: 2
+                    series: SERVER_ERROR
+                    methods: GET
+                    backoff:
+                      firstBackoff: 50ms
+                      maxBackoff: 200ms
+                      factor: 2
+                      basedOnPreviousValue: false
+              metadata:
+                response-timeout: 2000
 
             - id: auth-admin-service
               uri: ${ASTERION_AUTH_SERVICE_URL:http://localhost:8081}
               predicates:
                 - Path=/api/v1/admin/**
+              metadata:
+                response-timeout: 2000
 
 server:
   port: 8080

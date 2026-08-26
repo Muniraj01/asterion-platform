@@ -8,6 +8,7 @@ spring:
         webflux:
           metrics:
             enabled: true
+
           routes:
             - id: auth-service
               uri: ${ASTERION_AUTH_SERVICE_URL:http://localhost:8081}

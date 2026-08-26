@@ -21,7 +21,6 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)

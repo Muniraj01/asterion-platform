@@ -43,6 +43,7 @@ public class SecurityConfiguration {
                         .pathMatchers("/fallback/**")
                         .permitAll()
 
+
                         // Administrative APIs
                         .pathMatchers("/api/v1/admin/**")
                         .hasRole("ADMIN")

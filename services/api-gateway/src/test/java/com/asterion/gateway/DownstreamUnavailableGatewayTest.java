@@ -48,8 +48,8 @@ class DownstreamUnavailableGatewayTest {
     }
 
     private String createValidToken() {
-        SecretKey key = Keys.hmacShaKeyFor("change-me-change-me-change-me-change-me"
-                .getBytes(StandardCharsets.UTF_8));
+        SecretKey key = Keys.hmacShaKeyFor(
+                "change-me-change-me-change-me-change-me".getBytes(StandardCharsets.UTF_8));
 
         Instant now = Instant.now();
         return Jwts.builder()

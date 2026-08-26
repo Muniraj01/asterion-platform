@@ -20,12 +20,16 @@ import java.util.List;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class DownstreamUnavailableGatewayTest {
 
+    private static final String UNAVAILABLE_AUTH_SERVICE_URL =
+            "http://localhost:59999";
+
     @Autowired
     private WebTestClient webTestClient;
 
     @DynamicPropertySource
     static void gatewayProperties(DynamicPropertyRegistry registry) {
-        registry.add("ASTERION_AUTH_SERVICE_URL", () -> "http://localhost:59999");
+        registry.add("ASTERION_AUTH_SERVICE_URL",
+                () -> UNAVAILABLE_AUTH_SERVICE_URL);
     }
 
     @Test

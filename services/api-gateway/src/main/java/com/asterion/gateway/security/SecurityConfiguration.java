@@ -34,6 +34,16 @@ public class SecurityConfiguration {
                                 "/api/v1/auth/refresh"
                         ).permitAll()
 
+                        // Observability endpoints
+                        .pathMatchers("/actuator/health",
+                                "/actuator/info",
+                                "/actuator/metrics/**"
+                        ).permitAll()
+
+                        .pathMatchers("/fallback/**")
+                        .permitAll()
+
+
                         // Administrative APIs
                         .pathMatchers("/api/v1/admin/**")
                         .hasRole("ADMIN")

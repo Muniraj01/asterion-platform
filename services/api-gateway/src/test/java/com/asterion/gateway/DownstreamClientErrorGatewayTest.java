@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
@@ -81,6 +82,37 @@ class DownstreamClientErrorGatewayTest {
         assertThat(recordedRequest.getPath()).isEqualTo("/api/v1/users/me");
         assertThat(recordedRequest.getHeader(HttpHeaders.AUTHORIZATION))
                 .isEqualTo("Bearer " + token);
+    }
+
+    @Test
+    void shouldNotRetryClientError() throws InterruptedException {
+        mockAuthService.enqueue(new MockResponse()
+                .setResponseCode(401)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                    {
+                      "error": "unauthorized"
+                    }
+                    """));
+
+        String token = createValidToken();
+        webTestClient
+                .get()
+                .uri("/api/v1/users/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .exchange()
+                .expectStatus()
+                .isUnauthorized();
+
+        var firstRequest = mockAuthService.takeRequest(5, TimeUnit.SECONDS);
+        assertThat(firstRequest).isNotNull();
+        assertThat(firstRequest.getMethod()).isEqualTo("GET");
+        assertThat(firstRequest.getPath()).isEqualTo("/api/v1/users/me");
+
+        var secondRequest = mockAuthService.takeRequest(500, TimeUnit.MILLISECONDS);
+        assertThat(secondRequest)
+                .as("A 401 client error must not be retried")
+                .isNull();
     }
 
     private String createValidToken() {

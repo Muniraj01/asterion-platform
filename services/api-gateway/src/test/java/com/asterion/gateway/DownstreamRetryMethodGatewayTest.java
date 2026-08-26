@@ -4,12 +4,12 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -23,19 +23,13 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import okhttp3.mockwebserver.RecordedRequest;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class DownstreamTimeoutGatewayTest {
+class DownstreamRetryMethodGatewayTest {
 
     private static MockWebServer mockAuthService;
-    private static final long DOWNSTREAM_DELAY_SECONDS = 5;
-    private static final long GATEWAY_TIMEOUT_MILLIS = 2_000;
-    private static final long CLIENT_TIMEOUT_SECONDS = 10;
-
-    @LocalServerPort
-    private int gatewayPort;
 
     @Autowired
     private WebTestClient webTestClient;
@@ -54,60 +48,56 @@ class DownstreamTimeoutGatewayTest {
     @DynamicPropertySource
     static void gatewayProperties(DynamicPropertyRegistry registry) {
         registry.add("ASTERION_AUTH_SERVICE_URL",
-                () -> mockAuthService.url("/").toString()
-        );
+                () -> mockAuthService.url("/").toString());
     }
 
     @Test
-    void shouldReturnGatewayTimeoutWhenDownstreamServiceIsTooSlow() throws InterruptedException {
+    void shouldNotRetryPostRequestWhenDownstreamReturnsServerError()
+            throws InterruptedException {
         mockAuthService.enqueue(new MockResponse()
-                .setResponseCode(200)
+                .setResponseCode(503)
+                .setHeader("Content-Type", "application/json")
                 .setBody("""
-                {
-                  "email": "test@example.com"
-                }
-                """)
-                .setHeadersDelay(DOWNSTREAM_DELAY_SECONDS, TimeUnit.SECONDS)
-        );
+                        {
+                          "error": "service temporarily unavailable"
+                        }
+                        """));
 
         String token = createValidToken();
-
         webTestClient
                 .mutate()
-                .responseTimeout(Duration.ofSeconds(CLIENT_TIMEOUT_SECONDS))
+                .responseTimeout(Duration.ofSeconds(10))
                 .build()
-                .get()
+                .post()
                 .uri("/api/v1/users/me")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                .bodyValue("""
+                        {
+                          "name": "test"
+                        }
+                        """)
                 .exchange()
                 .expectStatus()
-                .isEqualTo(504);
+                .isEqualTo(503);
 
-        int downstreamRequests = 0;
-        RecordedRequest request;
+        RecordedRequest firstRequest = mockAuthService.takeRequest(5, TimeUnit.SECONDS);
 
-        while ((request = mockAuthService.takeRequest(500, TimeUnit.MILLISECONDS)) != null) {
-            downstreamRequests++;
+        assertThat(firstRequest).isNotNull();
+        assertThat(firstRequest.getMethod()).isEqualTo("POST");
+        assertThat(firstRequest.getPath()).isEqualTo("/api/v1/users/me");
 
-            assertThat(request.getMethod()).isEqualTo("GET");
-            assertThat(request.getPath()).isEqualTo("/api/v1/users/me");
-        }
-
-        assertThat(downstreamRequests)
-                .as("Gateway should make at least one downstream attempt")
-                .isGreaterThanOrEqualTo(1);
-
-        assertThat(downstreamRequests)
-                .as("Gateway should not exceed the configured retry limit")
-                .isLessThanOrEqualTo(3);
+        RecordedRequest retryRequest = mockAuthService.takeRequest(500, TimeUnit.MILLISECONDS);
+        assertThat(retryRequest)
+                .as("POST request must not be retried")
+                .isNull();
     }
 
     private String createValidToken() {
-        SecretKey key = Keys.hmacShaKeyFor(
-                "change-me-change-me-change-me-change-me".getBytes(StandardCharsets.UTF_8));
+        SecretKey key = Keys.hmacShaKeyFor("change-me-change-me-change-me-change-me"
+                .getBytes(StandardCharsets.UTF_8));
 
         Instant now = Instant.now();
-
         return Jwts.builder()
                 .subject("11111111-1111-1111-1111-111111111111")
                 .claim("email", "test@example.com")

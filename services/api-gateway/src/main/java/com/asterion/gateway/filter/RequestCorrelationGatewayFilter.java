@@ -15,6 +15,7 @@ public class RequestCorrelationGatewayFilter implements GlobalFilter, Ordered {
 
     public static final String REQUEST_ID_HEADER = "X-Request-Id";
     public static final String REQUEST_ID_CONTEXT_KEY = "asterion.requestId";
+    public static final String ORIGINAL_REQUEST_PATH = "asterion.originalRequestPath";
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange,
@@ -27,6 +28,7 @@ public class RequestCorrelationGatewayFilter implements GlobalFilter, Ordered {
         }
 
         String finalRequestId = requestId;
+        String originalRequestPath = exchange.getRequest().getPath().value();
 
         ServerWebExchange mutatedExchange = exchange
                 .mutate()
@@ -35,6 +37,9 @@ public class RequestCorrelationGatewayFilter implements GlobalFilter, Ordered {
                     headers.add(REQUEST_ID_HEADER, finalRequestId);
                 }))
                 .build();
+
+        mutatedExchange.getAttributes()
+                .put(ORIGINAL_REQUEST_PATH, originalRequestPath);
 
         mutatedExchange.getResponse()
                 .getHeaders()

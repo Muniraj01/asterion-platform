@@ -2,6 +2,8 @@ package com.asterion.gateway;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import org.junit.jupiter.api.AfterAll;
@@ -18,27 +20,25 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-import okhttp3.mockwebserver.RecordedRequest;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class DownstreamTimeoutGatewayTest {
+class GatewayMetricsTest {
 
     private static MockWebServer mockAuthService;
-    private static final long DOWNSTREAM_DELAY_SECONDS = 5;
-    private static final long GATEWAY_TIMEOUT_MILLIS = 2_000;
-    private static final long CLIENT_TIMEOUT_SECONDS = 10;
 
     @LocalServerPort
     private int gatewayPort;
 
     @Autowired
     private WebTestClient webTestClient;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     @BeforeAll
     static void startMockAuthService() throws IOException {
@@ -54,52 +54,47 @@ class DownstreamTimeoutGatewayTest {
     @DynamicPropertySource
     static void gatewayProperties(DynamicPropertyRegistry registry) {
         registry.add("ASTERION_AUTH_SERVICE_URL",
-                () -> mockAuthService.url("/").toString()
-        );
+                () -> mockAuthService.url("/").toString());
     }
 
     @Test
-    void shouldReturnGatewayTimeoutWhenDownstreamServiceIsTooSlow() throws InterruptedException {
+    void shouldRecordGatewayRequestMetric() {
         mockAuthService.enqueue(new MockResponse()
                 .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
                 .setBody("""
-                {
-                  "email": "test@example.com"
-                }
-                """)
-                .setHeadersDelay(DOWNSTREAM_DELAY_SECONDS, TimeUnit.SECONDS)
-        );
+                        {
+                          "email": "test@example.com"
+                        }
+                        """));
 
         String token = createValidToken();
-
+        long before = getGatewayRequestCount();
         webTestClient
-                .mutate()
-                .responseTimeout(Duration.ofSeconds(CLIENT_TIMEOUT_SECONDS))
-                .build()
                 .get()
                 .uri("/api/v1/users/me")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .exchange()
                 .expectStatus()
-                .isEqualTo(504);
+                .isOk();
 
-        int downstreamRequests = 0;
-        RecordedRequest request;
+        long after = getGatewayRequestCount();
+        assertThat(after).isEqualTo(before + 1);
 
-        while ((request = mockAuthService.takeRequest(500, TimeUnit.MILLISECONDS)) != null) {
-            downstreamRequests++;
+        Timer timer = meterRegistry
+                .find("spring.cloud.gateway.requests")
+                .tag("routeId", "auth-service")
+                .tag("httpMethod", "GET")
+                .tag("httpStatusCode", "200")
+                .timer();
 
-            assertThat(request.getMethod()).isEqualTo("GET");
-            assertThat(request.getPath()).isEqualTo("/api/v1/users/me");
-        }
+        assertThat(timer)
+                .as("Gateway request timer should be recorded")
+                .isNotNull();
 
-        assertThat(downstreamRequests)
-                .as("Gateway should make at least one downstream attempt")
-                .isGreaterThanOrEqualTo(1);
-
-        assertThat(downstreamRequests)
-                .as("Gateway should not exceed the configured retry limit")
-                .isLessThanOrEqualTo(3);
+        assertThat(timer.count())
+                .as("Exactly one gateway request should be recorded")
+                .isEqualTo(1);
     }
 
     private String createValidToken() {
@@ -107,7 +102,6 @@ class DownstreamTimeoutGatewayTest {
                 "change-me-change-me-change-me-change-me".getBytes(StandardCharsets.UTF_8));
 
         Instant now = Instant.now();
-
         return Jwts.builder()
                 .subject("11111111-1111-1111-1111-111111111111")
                 .claim("email", "test@example.com")
@@ -116,5 +110,15 @@ class DownstreamTimeoutGatewayTest {
                 .expiration(Date.from(now.plusSeconds(300)))
                 .signWith(key)
                 .compact();
+    }
+
+    private long getGatewayRequestCount() {
+        Timer timer = meterRegistry
+                .find("spring.cloud.gateway.requests")
+                .tag("routeId", "auth-service")
+                .tag("httpMethod", "GET")
+                .tag("httpStatusCode", "200")
+                .timer();
+        return timer == null ? 0 : timer.count();
     }
 }

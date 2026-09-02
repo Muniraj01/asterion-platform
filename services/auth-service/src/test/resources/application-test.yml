@@ -2,3 +2,6 @@ asterion:
   security:
     bootstrap-admin:
       password: test-bootstrap-admin-password
+    internal:
+      service-name: api-gateway
+      service-token: test-internal-service-token

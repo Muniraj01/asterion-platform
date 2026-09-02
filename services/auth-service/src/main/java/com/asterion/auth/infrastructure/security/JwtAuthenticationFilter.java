@@ -22,54 +22,40 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtAuthenticationConverter converter;
     private final UserRepository userRepository;
 
-    public JwtAuthenticationFilter(
-            JwtTokenProvider jwtTokenProvider,
-            JwtAuthenticationConverter converter,
-            UserRepository userRepository
-    ) {
+    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider,
+                                   JwtAuthenticationConverter converter,
+                                   UserRepository userRepository) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.converter = converter;
         this.userRepository = userRepository;
     }
 
     @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain
-    ) throws ServletException, IOException {
-
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
-
         if (header != null && header.startsWith("Bearer ")) {
-
             String token = header.substring(7);
-
             if (jwtTokenProvider.isValid(token)) {
-
                 String email = jwtTokenProvider.extractEmail(token);
-
-                userRepository.findByEmail(
-                        new EmailAddress(email)
-                ).ifPresent(user -> {
-
-                    if (!user.isActive()) {
-                        return;
-                    }
-
-                    List<String> roles =
-                            jwtTokenProvider.extractRoles(token);
-
-                    Authentication authentication =
-                            converter.convert(email, roles);
-
-                    SecurityContextHolder
-                            .getContext()
-                            .setAuthentication(authentication);
-                });
+                userRepository.findByEmail(new EmailAddress(email))
+                        .ifPresent(user -> {
+                            if (!user.isActive()) {
+                                return;
+                            }
+                            List<String> roles = jwtTokenProvider.extractRoles(token);
+                            Authentication authentication = converter.convert(email, roles);
+                            SecurityContextHolder.getContext().setAuthentication(authentication);
+                        });
             }
         }
-
         filterChain.doFilter(request, response);
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String servletPath = request.getServletPath();
+        return servletPath != null && servletPath.startsWith("/api/v1/internal/");
     }
 }

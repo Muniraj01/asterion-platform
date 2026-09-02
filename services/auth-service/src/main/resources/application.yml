@@ -34,3 +34,7 @@ asterion:
       enabled: true
       email: admin@asterion.com
       password: ${ASTERION_BOOTSTRAP_ADMIN_PASSWORD}
+
+    internal:
+      service-name: ${ASTERION_INTERNAL_SERVICE_NAME:api-gateway}
+      service-token: ${ASTERION_INTERNAL_SERVICE_TOKEN:change-me-internal-service-token}

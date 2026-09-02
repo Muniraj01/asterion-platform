@@ -54,12 +54,7 @@ class JwtAuthenticationFilterTest {
 
     @BeforeEach
     void setUp() {
-        filter = new JwtAuthenticationFilter(
-                jwtTokenProvider,
-                converter,
-                userRepository
-        );
-
+        filter = new JwtAuthenticationFilter(jwtTokenProvider, converter, userRepository);
         SecurityContextHolder.clearContext();
     }
 
@@ -71,7 +66,6 @@ class JwtAuthenticationFilterTest {
     @Test
     void shouldAuthenticateActiveUserWithValidToken() throws Exception {
         User user = activeUser();
-
         when(request.getHeader("Authorization"))
                 .thenReturn("Bearer valid-token");
         when(jwtTokenProvider.isValid("valid-token"))
@@ -87,15 +81,8 @@ class JwtAuthenticationFilterTest {
 
         filter.doFilterInternal(request, response, filterChain);
 
-        assertSame(
-                authentication,
-                SecurityContextHolder.getContext().getAuthentication()
-        );
-
-        verify(converter).convert(
-                "test@example.com",
-                List.of("USER")
-        );
+        assertSame(authentication, SecurityContextHolder.getContext().getAuthentication());
+        verify(converter).convert("test@example.com", List.of("USER"));
         verify(filterChain).doFilter(request, response);
     }
 
@@ -112,36 +99,27 @@ class JwtAuthenticationFilterTest {
                 .thenReturn("test@example.com");
         when(userRepository.findByEmail(any(EmailAddress.class)))
                 .thenReturn(Optional.of(user));
-
         filter.doFilterInternal(request, response, filterChain);
 
         verifyNoInteractions(converter);
-        assertSame(
-                null,
-                SecurityContextHolder.getContext().getAuthentication()
-        );
+        assertSame(null, SecurityContextHolder.getContext().getAuthentication());
         verify(filterChain).doFilter(request, response);
     }
 
     @Test
     void shouldRejectInvalidToken() throws Exception {
         String token = "invalid-token";
-
         when(request.getHeader("Authorization"))
                 .thenReturn("Bearer " + token);
-
         when(jwtTokenProvider.isValid(token))
                 .thenReturn(false);
-
         filter.doFilter(request, response, filterChain);
 
         verify(request).getHeader("Authorization");
         verify(jwtTokenProvider).isValid(token);
         verifyNoMoreInteractions(jwtTokenProvider);
-
         verifyNoInteractions(userRepository, converter);
         verify(filterChain).doFilter(request, response);
-
         assertNull(SecurityContextHolder.getContext().getAuthentication());
     }
 
@@ -149,19 +127,10 @@ class JwtAuthenticationFilterTest {
     void shouldIgnoreRequestWithoutBearerToken() throws Exception {
         when(request.getHeader("Authorization"))
                 .thenReturn(null);
-
         filter.doFilterInternal(request, response, filterChain);
 
-        verifyNoInteractions(
-                jwtTokenProvider,
-                userRepository,
-                converter
-        );
-
-        assertSame(
-                null,
-                SecurityContextHolder.getContext().getAuthentication()
-        );
+        verifyNoInteractions(jwtTokenProvider, userRepository, converter);
+        assertSame(null, SecurityContextHolder.getContext().getAuthentication());
         verify(filterChain).doFilter(request, response);
     }
 
@@ -179,17 +148,26 @@ class JwtAuthenticationFilterTest {
         filter.doFilterInternal(request, response, filterChain);
 
         verifyNoInteractions(converter);
-        assertSame(
-                null,
-                SecurityContextHolder.getContext().getAuthentication()
-        );
+        assertSame(null, SecurityContextHolder.getContext().getAuthentication());
         verify(filterChain).doFilter(request, response);
     }
 
     private User activeUser() {
-        return User.register(
-                new EmailAddress("test@example.com"),
-                new PasswordHash("encoded-password")
-        );
+        return User.register(new EmailAddress("test@example.com"),
+                new PasswordHash("encoded-password"));
+    }
+
+    @Test
+    void shouldSkipJwtAuthenticationForInternalServiceRequest() throws Exception {
+        when(request.getServletPath())
+                .thenReturn("/api/v1/internal/test");
+        InternalServiceAuthentication serviceAuthentication =
+                new InternalServiceAuthentication("api-gateway");
+        SecurityContextHolder.getContext().setAuthentication(serviceAuthentication);
+
+        filter.doFilter(request, response, filterChain);
+        verifyNoInteractions(jwtTokenProvider, userRepository, converter);
+        assertSame(serviceAuthentication, SecurityContextHolder.getContext().getAuthentication());
+        verify(filterChain).doFilter(request, response);
     }
 }

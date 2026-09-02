@@ -86,3 +86,6 @@ asterion:
   security:
     jwt:
       secret: ${JWT_SECRET:change-me-change-me-change-me-change-me}
+    internal:
+      service-name: ${ASTERION_SERVICE_NAME:api-gateway}
+      service-token: ${ASTERION_SERVICE_TOKEN:change-me-internal-service-token}

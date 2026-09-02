@@ -193,6 +193,48 @@ class JwtAuthenticationGatewayTest {
     }
 
     @Test
+    void shouldPropagateGatewayServiceIdentityToDownstreamService() throws InterruptedException {
+        mockAuthResponse();
+        String token = createValidToken(List.of("USER"));
+        webTestClient
+                .get()
+                .uri("/api/v1/users/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .exchange()
+                .expectStatus()
+                .isOk();
+
+        var recordedRequest = mockAuthService.takeRequest();
+        assertThat(recordedRequest.getHeader("X-Service-Name"))
+                .isEqualTo("api-gateway");
+        assertThat(recordedRequest.getHeader("X-Service-Token"))
+                .isEqualTo("change-me-internal-service-token");
+    }
+
+    @Test
+    void shouldNotTrustClientSuppliedServiceIdentity() throws InterruptedException {
+        mockAuthResponse();
+        String token = createValidToken(List.of("USER"));
+        webTestClient
+                .get()
+                .uri("/api/v1/users/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+
+                // Malicious client-supplied internal identity
+                .header("X-Service-Name", "attacker-service")
+                .header("X-Service-Token", "attacker-token")
+                .exchange()
+                .expectStatus()
+                .isOk();
+
+        var recordedRequest = mockAuthService.takeRequest();
+        assertThat(recordedRequest.getHeader("X-Service-Name"))
+                .isEqualTo("api-gateway");
+        assertThat(recordedRequest.getHeader("X-Service-Token"))
+                .isEqualTo("change-me-internal-service-token");
+    }
+
+    @Test
     void shouldAllowUserToAccessUserEndpoint() throws InterruptedException {
         mockAuthService.enqueue(new MockResponse()
                 .setResponseCode(200)

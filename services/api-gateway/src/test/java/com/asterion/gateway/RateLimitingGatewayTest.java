@@ -21,8 +21,14 @@ import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,45 +68,70 @@ class RateLimitingGatewayTest {
 
     @DynamicPropertySource
     static void gatewayProperties(DynamicPropertyRegistry registry) {
-        registry.add("ASTERION_AUTH_SERVICE_URL", () -> mockAuthService.url("/").toString());
-        //use the Redis DB 15 instead of your normal DB for tests (database configured in application.yml)
+        registry.add("ASTERION_AUTH_SERVICE_URL",
+                () -> mockAuthService.url("/").toString());
         registry.add("REDIS_DATABASE", () -> "15");
     }
 
     @Test
-    void shouldRejectRequestWhenRateLimitIsExceeded() throws InterruptedException {
-        // The configured bucket will allow 10 requests.
-        // Therefore the 11th request should be rejected.
+    void shouldRejectRequestWhenRateLimitIsExceeded()
+            throws ExecutionException, InterruptedException {
+        // Queue responses only for requests that should pass the rate limiter.
         for (int i = 0; i < 10; i++) {
             mockAuthService.enqueue(new MockResponse()
                     .setResponseCode(200)
                     .setHeader("Content-Type", "application/json")
                     .setBody("""
-                    {
-                      "email": "test@example.com"
-                    }
-                    """));
+                {
+                  "email": "test@example.com"
+                }
+                """));
         }
 
-        String token = createValidToken("11111111-1111-1111-1111-111111111111");
-        for (int i = 0; i < 10; i++) {
-            webTestClient
-                    .get()
-                    .uri("/api/v1/users/me")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                    .exchange()
-                    .expectStatus()
-                    .isOk();
-        }
+        ExecutorService executor = Executors.newFixedThreadPool(11);
+        CountDownLatch ready = new CountDownLatch(11);
+        CountDownLatch start = new CountDownLatch(1);
 
-        // 11th request must be rejected by the Gateway.
-        webTestClient
-                .get()
-                .uri("/api/v1/users/me")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                .exchange()
-                .expectStatus()
-                .isEqualTo(429);
+        try {
+            List<Future<Integer>> futures = new ArrayList<>();
+            for (int i = 0; i < 11; i++) {
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    // Make all requests enter the test at approximately
+                    // the same time so the bucket is tested as a burst.
+                    start.await();
+                    String token = createValidToken("11111111-1111-1111-1111-111111111111");
+                    return webTestClient
+                            .get()
+                            .uri("/api/v1/users/me")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                            .exchange()
+                            .returnResult(Void.class)
+                            .getStatus()
+                            .value();
+                }));
+            }
+
+            assertThat(ready.await(2, TimeUnit.SECONDS))
+                    .as("All requests should be ready before the burst starts")
+                    .isTrue();
+
+            start.countDown();
+
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> future : futures) {
+                statuses.add(future.get());
+            }
+
+            assertThat(statuses).containsExactlyInAnyOrder(
+                    200, 200, 200, 200, 200,
+                    200, 200, 200, 200, 200,
+                    429);
+
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
 
         // Exactly ten requests should have reached Auth Service.
         for (int i = 0; i < 10; i++) {
@@ -112,7 +143,7 @@ class RateLimitingGatewayTest {
             assertThat(request.getPath()).isEqualTo("/api/v1/users/me");
         }
 
-        // The rejected 11th request must not reach Auth Service.
+        // The rate-limited request must never reach Auth Service.
         assertThat(mockAuthService
                 .takeRequest(500, TimeUnit.MILLISECONDS))
                 .as("Rate-limited request must not reach Auth Service")
@@ -120,7 +151,8 @@ class RateLimitingGatewayTest {
     }
 
     @Test
-    void shouldMaintainIndependentRateLimitsPerUser() {
+    void shouldMaintainIndependentRateLimitsPerUser()
+            throws ExecutionException, InterruptedException {
         for (int i = 0; i < 11; i++) {
             mockAuthService.enqueue(new MockResponse()
                     .setResponseCode(200)
@@ -135,25 +167,34 @@ class RateLimitingGatewayTest {
         String userOneToken = createValidToken("11111111-1111-1111-1111-111111111111");
         String userTwoToken = createValidToken("22222222-2222-2222-2222-222222222222");
 
-        // Consume user one's entire burst.
-        for (int i = 0; i < 10; i++) {
-            webTestClient
-                    .get()
-                    .uri("/api/v1/users/me")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + userOneToken)
-                    .exchange()
-                    .expectStatus()
-                    .isOk();
-        }
+        // start 11 requests concurrently and verify that the burst allows 10
+        // while the 11th is rejected (per user - userOne here).
+        ExecutorService executor = Executors.newFixedThreadPool(11);
+        try {
+            List<Future<Integer>> futures = new ArrayList<>();
+            for (int i = 0; i < 11; i++) {
+                futures.add(executor.submit(() -> webTestClient
+                        .get()
+                        .uri("/api/v1/users/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + userOneToken)
+                        .exchange()
+                        .returnResult(Void.class)
+                        .getStatus()
+                        .value()
+                ));
+            }
 
-        // User one is exhausted.
-        webTestClient
-                .get()
-                .uri("/api/v1/users/me")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + userOneToken)
-                .exchange()
-                .expectStatus()
-                .isEqualTo(429);
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> future : futures) {
+                statuses.add(future.get());
+            }
+            assertThat(statuses).containsExactlyInAnyOrder(
+                    200, 200, 200, 200, 200,
+                    200, 200, 200, 200, 200,
+                    429);
+        } finally {
+            executor.shutdownNow();
+        }
 
         // User two has a completely independent bucket.
         webTestClient

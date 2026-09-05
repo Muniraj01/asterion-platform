@@ -12,6 +12,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import java.io.IOException;
+import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -28,7 +30,14 @@ class InternalServiceAuthenticationFilterTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
-        filter = new InternalServiceAuthenticationFilter(SERVICE_NAME, SERVICE_TOKEN);
+        InternalServiceProperties properties = new InternalServiceProperties(
+                Map.of("api-gateway", new InternalServiceProperties.Service(
+                        SERVICE_TOKEN, Set.of(InternalServicePermission.USER_READ)),
+
+                        "reporting-service", new InternalServiceProperties.Service(
+                                "test-reporting-service-token", Set.of())));
+
+        filter = new InternalServiceAuthenticationFilter(properties);
         filterChain = mock(FilterChain.class);
     }
 
@@ -39,7 +48,7 @@ class InternalServiceAuthenticationFilterTest {
 
     private MockHttpServletRequest internalRequest() {
         MockHttpServletRequest request = new MockHttpServletRequest();
-        request.setServletPath("/api/v1/internal/test");
+        request.setRequestURI("/api/v1/internal/test");
         return request;
     }
 
@@ -136,6 +145,49 @@ class InternalServiceAuthenticationFilterTest {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         assertThat(authentication).isNotNull();
         assertThat(authentication.getPrincipal()).isEqualTo(SERVICE_NAME);
+        assertThat(authentication.getAuthorities())
+                .extracting("authority")
+                .containsExactlyInAnyOrder("ROLE_SERVICE", "INTERNAL_USER_READ");
+    }
+
+    @Test
+    void shouldAuthenticateAnotherTrustedServiceWithItsConfiguredCredentials()
+            throws ServletException, IOException {
+        // given
+        MockHttpServletRequest request = internalRequest();
+        request.addHeader("X-Service-Name", "reporting-service");
+        request.addHeader("X-Service-Token", "test-reporting-service-token");
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        // when
+        filter.doFilter(request, response, filterChain);
+
+        // then
+        assertThat(response.getStatus()).isEqualTo(200);
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(authentication).isNotNull();
+        assertThat(authentication.isAuthenticated()).isTrue();
+        assertThat(authentication.getPrincipal()).isEqualTo("reporting-service");
+        verify(filterChain).doFilter(request, response);
+    }
+
+    @Test
+    void shouldAuthenticateReportingServiceWithoutUserReadPermission()
+            throws ServletException, IOException {
+        MockHttpServletRequest request = internalRequest();
+        request.addHeader("X-Service-Name", "reporting-service");
+        request.addHeader("X-Service-Token", "test-reporting-service-token");
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(request, response, filterChain);
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        assertThat(authentication).isNotNull();
+        assertThat(authentication.isAuthenticated()).isTrue();
+        assertThat(authentication.getPrincipal())
+                .isEqualTo("reporting-service");
+
         assertThat(authentication.getAuthorities())
                 .extracting("authority")
                 .containsExactly("ROLE_SERVICE");

@@ -16,14 +16,10 @@ public class InternalServiceAuthenticationFilter extends OncePerRequestFilter {
     private static final String SERVICE_NAME_HEADER = "X-Service-Name";
     private static final String SERVICE_TOKEN_HEADER = "X-Service-Token";
 
-    private final String expectedServiceName;
-    private final String expectedServiceToken;
+    private final InternalServiceProperties properties;
 
-    public InternalServiceAuthenticationFilter(
-            @Value("${asterion.security.internal.service-name}") String expectedServiceName,
-            @Value("${asterion.security.internal.service-token}") String expectedServiceToken) {
-        this.expectedServiceName = expectedServiceName;
-        this.expectedServiceToken = expectedServiceToken;
+    public InternalServiceAuthenticationFilter(InternalServiceProperties properties) {
+        this.properties = properties;
     }
 
     @Override
@@ -33,18 +29,27 @@ public class InternalServiceAuthenticationFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String serviceName = request.getHeader(SERVICE_NAME_HEADER);
         String serviceToken = request.getHeader(SERVICE_TOKEN_HEADER);
-        if (!expectedServiceName.equals(serviceName)
-                || !expectedServiceToken.equals(serviceToken)) {
+
+        if (serviceName == null || serviceToken == null) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             return;
         }
-        InternalServiceAuthentication authentication = new InternalServiceAuthentication(serviceName);
+
+        InternalServiceProperties.Service service = properties.services().get(serviceName);
+        if (service == null || !service.token().equals(serviceToken)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            return;
+        }
+
+        InternalServiceAuthentication authentication =
+                new InternalServiceAuthentication(serviceName, service.permissions());
         SecurityContextHolder.getContext().setAuthentication(authentication);
         filterChain.doFilter(request, response);
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getServletPath().startsWith("/api/v1/internal/");
+        String requestUri = request.getRequestURI();
+        return requestUri == null || !requestUri.startsWith("/api/v1/internal/");
     }
 }

@@ -36,5 +36,12 @@ asterion:
       password: ${ASTERION_BOOTSTRAP_ADMIN_PASSWORD}
 
     internal:
-      service-name: ${ASTERION_INTERNAL_SERVICE_NAME:api-gateway}
-      service-token: ${ASTERION_INTERNAL_SERVICE_TOKEN:change-me-internal-service-token}
+      services:
+        api-gateway:
+          token: ${ASTERION_API_GATEWAY_TOKEN:change-me-internal-service-token}
+          permissions:
+            - USER_READ
+
+        reporting-service:
+          token: ${ASTERION_REPORTING_SERVICE_TOKEN:change-me-reporting-service-token}
+          permissions: [ ]

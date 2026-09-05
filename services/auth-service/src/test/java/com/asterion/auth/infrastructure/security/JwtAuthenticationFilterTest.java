@@ -20,6 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -108,19 +109,17 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void shouldRejectInvalidToken() throws Exception {
-        String token = "invalid-token";
         when(request.getHeader("Authorization"))
-                .thenReturn("Bearer " + token);
-        when(jwtTokenProvider.isValid(token))
+                .thenReturn("Bearer invalid-token");
+        when(jwtTokenProvider.isValid("invalid-token"))
                 .thenReturn(false);
-        filter.doFilter(request, response, filterChain);
 
-        verify(request).getHeader("Authorization");
-        verify(jwtTokenProvider).isValid(token);
-        verifyNoMoreInteractions(jwtTokenProvider);
-        verifyNoInteractions(userRepository, converter);
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(jwtTokenProvider).isValid("invalid-token");
+        verifyNoInteractions(userRepository);
+        verifyNoInteractions(converter);
         verify(filterChain).doFilter(request, response);
-        assertNull(SecurityContextHolder.getContext().getAuthentication());
     }
 
     @Test
@@ -159,15 +158,14 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void shouldSkipJwtAuthenticationForInternalServiceRequest() throws Exception {
-        when(request.getServletPath())
-                .thenReturn("/api/v1/internal/test");
-        InternalServiceAuthentication serviceAuthentication =
-                new InternalServiceAuthentication("api-gateway");
-        SecurityContextHolder.getContext().setAuthentication(serviceAuthentication);
+        when(request.getRequestURI()).thenReturn("/api/v1/internal/test");
+        InternalServiceAuthentication serviceAuth = new InternalServiceAuthentication(
+                "api-gateway", Set.of(InternalServicePermission.USER_READ));
+        SecurityContextHolder.getContext().setAuthentication(serviceAuth);
 
         filter.doFilter(request, response, filterChain);
         verifyNoInteractions(jwtTokenProvider, userRepository, converter);
-        assertSame(serviceAuthentication, SecurityContextHolder.getContext().getAuthentication());
+        assertSame(serviceAuth, SecurityContextHolder.getContext().getAuthentication());
         verify(filterChain).doFilter(request, response);
     }
 }

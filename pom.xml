@@ -42,6 +42,7 @@
         <module>libraries/testing</module>
         <module>services/auth-service</module>
         <module>services/api-gateway</module>
+        <module>services/merchant-service</module>
     </modules>
 
     <dependencyManagement>

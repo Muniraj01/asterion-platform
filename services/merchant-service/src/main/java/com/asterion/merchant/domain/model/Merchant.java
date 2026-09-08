@@ -1,6 +1,7 @@
 package com.asterion.merchant.domain.model;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -37,7 +38,15 @@ public class Merchant {
         return new Merchant(UUID.randomUUID(), ownerUserId,
                 businessName, legalName,
                 contactEmail, MerchantStatus.PENDING,
-                Instant.now());
+                Instant.now().truncatedTo(ChronoUnit.MICROS));
+    }
+
+    public static Merchant reconstitute(UUID merchantId, UUID ownerUserId,
+                                        String businessName, String legalName,
+                                        String contactEmail, MerchantStatus status,
+                                        Instant createdAt) {
+        return new Merchant(merchantId, ownerUserId, businessName,
+                legalName, contactEmail, status, createdAt);
     }
 
     public void activate() {

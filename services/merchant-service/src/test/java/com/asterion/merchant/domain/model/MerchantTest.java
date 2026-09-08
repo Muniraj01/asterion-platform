@@ -3,6 +3,7 @@ package com.asterion.merchant.domain.model;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -13,7 +14,7 @@ class MerchantTest {
     @Test
     void shouldCreateMerchantInPendingStatus() {
         UUID ownerUserId = UUID.randomUUID();
-        Instant before = Instant.now();
+        Instant before = Instant.now().truncatedTo(ChronoUnit.MICROS);
         Merchant merchant = Merchant.create(
                 ownerUserId,
                 "Asterion Technologies",
@@ -21,7 +22,9 @@ class MerchantTest {
                 "merchant@example.com"
         );
 
-        Instant after = Instant.now();
+        Instant after = Instant.now().truncatedTo(ChronoUnit.MICROS);
+        assertThat(merchant.createdAt())
+                .isBetween(before, after);
 
         assertThat(merchant.id()).isNotNull();
         assertThat(merchant.ownerUserId()).isEqualTo(ownerUserId);
@@ -133,6 +136,12 @@ class MerchantTest {
         Merchant merchant = createMerchant();
         assertThatThrownBy(merchant::suspend)
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void shouldCreateMerchantWithMicrosecondPrecisionTimestamp() {
+        Merchant merchant = createMerchant();
+        assertThat(merchant.createdAt().getNano() % 1_000).isZero();
     }
 
     private Merchant createMerchant() {

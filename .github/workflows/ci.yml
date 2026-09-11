@@ -13,6 +13,21 @@ jobs:
     name: Build and Test
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: asterion_auth
+          POSTGRES_USER: asterion
+          POSTGRES_PASSWORD: asterion
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd="pg_isready -U asterion -d asterion_auth"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

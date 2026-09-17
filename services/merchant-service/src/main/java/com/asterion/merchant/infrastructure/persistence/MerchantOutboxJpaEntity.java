@@ -78,4 +78,9 @@ public class MerchantOutboxJpaEntity {
     public String getStatus() {
         return status;
     }
+
+    public void markPublished(Instant publishedAt) {
+        this.status = "PUBLISHED";
+        this.publishedAt = publishedAt;
+    }
 }

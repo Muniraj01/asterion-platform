@@ -137,7 +137,7 @@ class CreateMerchantServiceTest {
         assertThat(outboxEvent.aggregateId())
                 .isEqualTo(merchant.id());
         assertThat(outboxEvent.eventType())
-                .isEqualTo("MerchantCreated");
+                .isEqualTo("merchant.created.v1");
         assertThat(outboxEvent.payload())
                 .contains(merchant.id().toString());
         assertThat(outboxEvent.createdAt())

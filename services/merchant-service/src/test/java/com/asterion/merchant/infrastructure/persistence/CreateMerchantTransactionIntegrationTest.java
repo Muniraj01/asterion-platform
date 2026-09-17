@@ -1,6 +1,7 @@
 package com.asterion.merchant.infrastructure.persistence;
 
 import com.asterion.merchant.application.command.CreateMerchantCommand;
+import com.asterion.merchant.application.model.MerchantOutboxEvent;
 import com.asterion.merchant.application.port.in.CreateMerchantUseCase;
 import com.asterion.merchant.application.port.out.MerchantOutboxRepository;
 import com.asterion.merchant.application.port.out.MerchantRepository;
@@ -17,6 +18,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -78,9 +80,23 @@ class CreateMerchantTransactionIntegrationTest {
         @Bean
         @Primary
         MerchantOutboxRepository failingMerchantOutboxRepository() {
-            return event -> {
-                attemptedMerchantId.set(event.aggregateId());
-                throw new IllegalStateException("Simulated outbox failure");
+            return new MerchantOutboxRepository() {
+
+                @Override
+                public MerchantOutboxEvent save(MerchantOutboxEvent event) {
+                    attemptedMerchantId.set(event.aggregateId());
+                    throw new IllegalStateException("Simulated outbox failure");
+                }
+
+                @Override
+                public List<MerchantOutboxEvent> findPending(int limit) {
+                    throw new UnsupportedOperationException("Not required for this rollback test");
+                }
+
+                @Override
+                public void markPublished(UUID eventId) {
+                    throw new UnsupportedOperationException("Not required for this rollback test");
+                }
             };
         }
     }

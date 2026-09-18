@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: merchant-service
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+asterion:
+  merchant:
+    kafka:
+      topic: ${ASTERION_MERCHANT_KAFKA_TOPIC:merchant.events}
+
+    outbox:
+      poll-interval-ms: ${ASTERION_MERCHANT_OUTBOX_POLL_INTERVAL_MS:1000}
+      batch-size: ${ASTERION_MERCHANT_OUTBOX_BATCH_SIZE:100}

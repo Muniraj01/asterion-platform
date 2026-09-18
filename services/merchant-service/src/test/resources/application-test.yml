@@ -1,0 +1,9 @@
+spring:
+  task:
+    scheduling:
+      enabled: false
+
+asterion:
+  merchant:
+    outbox:
+      scheduler-enabled: false

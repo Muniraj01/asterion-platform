@@ -5,6 +5,7 @@ import com.asterion.merchant.application.port.out.EventPublisher;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.KafkaException;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -32,8 +33,11 @@ public class KafkaMerchantEventPublisher implements EventPublisher {
     @Override
     public void publish(MerchantOutboxEvent event) {
         Objects.requireNonNull(event, "event must not be null");
-        ProducerRecord<String, String> record =
-                new ProducerRecord<>(topic, event.aggregateId().toString(), event.payload());
+        ProducerRecord<String, String> record = new ProducerRecord<>(
+                topic,
+                event.aggregateId().toString(),
+                event.payload()
+        );
 
         addHeader(record, "eventId", event.eventId().toString());
         addHeader(record, "eventType", event.eventType());
@@ -48,11 +52,15 @@ public class KafkaMerchantEventPublisher implements EventPublisher {
         } catch (ExecutionException ex) {
             throw new IllegalStateException(
                     "Failed to publish merchant outbox event", ex.getCause());
+        } catch (KafkaException ex) {
+            throw new IllegalStateException(
+                    "Failed to publish merchant outbox event", ex);
         }
     }
 
     private void addHeader(ProducerRecord<String, String> record,
-                           String name, String value) {
+                           String name,
+                           String value) {
         record.headers().add(name, value.getBytes(StandardCharsets.UTF_8));
     }
 }

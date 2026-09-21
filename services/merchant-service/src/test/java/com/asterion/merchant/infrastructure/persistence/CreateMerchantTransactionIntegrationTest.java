@@ -18,6 +18,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -90,6 +91,11 @@ class CreateMerchantTransactionIntegrationTest {
 
                 @Override
                 public List<MerchantOutboxEvent> findPending(int limit) {
+                    throw new UnsupportedOperationException("Not required for this rollback test");
+                }
+
+                @Override
+                public List<MerchantOutboxEvent> claimPending(int limit, Instant now, Instant staleBefore) {
                     throw new UnsupportedOperationException("Not required for this rollback test");
                 }
 

@@ -76,7 +76,7 @@ class KafkaMerchantEventPublisherFailureIntegrationTest {
     }
 
     @Test
-    void shouldKeepOutboxEventNewWhenKafkaPublicationFails() {
+    void shouldKeepOutboxEventProcessingWhenKafkaPublicationFails() {
         UUID eventId = UUID.randomUUID();
         UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
@@ -87,7 +87,8 @@ class KafkaMerchantEventPublisherFailureIntegrationTest {
                 "merchant.created.v1",
                 "{\"merchantId\":\"" + merchantId + "\"}",
                 createdAt,
-                "NEW"
+                "NEW",
+                null
         );
         merchantOutboxRepository.save(event);
 
@@ -109,7 +110,8 @@ class KafkaMerchantEventPublisherFailureIntegrationTest {
 
         MerchantOutboxJpaEntity persisted = jpaRepository.findById(eventId).orElseThrow();
 
-        assertThat(persisted.getStatus()).isEqualTo("NEW");
+        assertThat(persisted.getStatus()).isEqualTo("PROCESSING");
+        assertThat(persisted.getClaimedAt()).isNotNull();
         assertThat(persisted.getPublishedAt()).isNull();
     }
 }

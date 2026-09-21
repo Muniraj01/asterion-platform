@@ -35,13 +35,15 @@ public class MerchantOutboxJpaEntity {
     @Column(nullable = false, length = 30)
     private String status;
 
+    private Instant claimedAt;
+
     protected MerchantOutboxJpaEntity() {
     }
 
     public MerchantOutboxJpaEntity(UUID eventId, UUID aggregateId,
                                    String eventType, String payload,
                                    Instant createdAt, Instant publishedAt,
-                                   String status) {
+                                   String status, Instant claimedAt) {
         this.eventId = eventId;
         this.aggregateId = aggregateId;
         this.eventType = eventType;
@@ -49,6 +51,7 @@ public class MerchantOutboxJpaEntity {
         this.createdAt = createdAt;
         this.publishedAt = publishedAt;
         this.status = status;
+        this.claimedAt = claimedAt;
     }
 
     public UUID getEventId() {
@@ -79,8 +82,23 @@ public class MerchantOutboxJpaEntity {
         return status;
     }
 
+    public Instant getClaimedAt() {
+        return claimedAt;
+    }
+
+    public void markClaimed(Instant claimedAt) {
+        this.status = "PROCESSING";
+        this.claimedAt = claimedAt;
+    }
+
     public void markPublished(Instant publishedAt) {
         this.status = "PUBLISHED";
         this.publishedAt = publishedAt;
+        this.claimedAt = null;
+    }
+
+    public void releaseClaim() {
+        this.status = "NEW";
+        this.claimedAt = null;
     }
 }

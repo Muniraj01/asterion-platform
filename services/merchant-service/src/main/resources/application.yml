@@ -18,3 +18,4 @@ asterion:
     outbox:
       poll-interval-ms: ${ASTERION_MERCHANT_OUTBOX_POLL_INTERVAL_MS:1000}
       batch-size: ${ASTERION_MERCHANT_OUTBOX_BATCH_SIZE:100}
+      claim-lease-seconds: ${ASTERION_MERCHANT_OUTBOX_CLAIM_LEASE_SECONDS:60}

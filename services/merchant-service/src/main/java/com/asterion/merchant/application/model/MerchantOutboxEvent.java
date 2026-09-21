@@ -9,6 +9,7 @@ public record MerchantOutboxEvent(
         String eventType,
         String payload,
         Instant createdAt,
-        String status
+        String status,
+        Instant claimedAt
 ) {
 }

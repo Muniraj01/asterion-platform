@@ -40,7 +40,8 @@ class KafkaMerchantEventPublisherTest {
                 "merchant.created.v1",
                 "{\"merchantId\":\"" + merchantId + "\"}",
                 Instant.now(),
-                "NEW"
+                "NEW",
+                null
         );
 
         CompletableFuture<SendResult<String, String>> future =
@@ -122,7 +123,8 @@ class KafkaMerchantEventPublisherTest {
                 "merchant.created.v1",
                 "{}",
                 Instant.now(),
-                "NEW");
+                "NEW",
+                null);
     }
 
     private String headerValue(ProducerRecord<String, String> record, String name) {

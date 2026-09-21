@@ -62,7 +62,8 @@ public class CreateMerchantService implements CreateMerchantUseCase {
                 "merchant.created.v1",
                 payload,
                 savedMerchant.createdAt(),
-                "NEW"
+                "NEW",
+                null
         );
 
         merchantOutboxRepository.save(outboxEvent);

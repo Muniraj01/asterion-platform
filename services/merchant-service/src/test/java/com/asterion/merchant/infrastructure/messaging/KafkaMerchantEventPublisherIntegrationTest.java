@@ -87,37 +87,89 @@ class KafkaMerchantEventPublisherIntegrationTest {
         UUID eventId = UUID.randomUUID();
         UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
+
         MerchantOutboxEvent event = new MerchantOutboxEvent(
                 eventId,
                 merchantId,
                 "merchant.created.v1",
                 "{\"merchantId\":\"" + merchantId + "\"}",
                 createdAt,
-                "NEW"
+                "NEW",
+                null
         );
         merchantOutboxRepository.save(event);
 
-        MerchantOutboxPublisher publisher = new MerchantOutboxPublisher(
-                merchantOutboxRepository, eventPublisher);
+        MerchantOutboxPublisher publisher =
+                new MerchantOutboxPublisher(merchantOutboxRepository, eventPublisher);
         publisher.publishPending(10);
 
         MerchantOutboxJpaEntity persisted = jpaRepository.findById(eventId).orElseThrow();
-
         assertThat(persisted.getStatus()).isEqualTo("PUBLISHED");
         assertThat(persisted.getPublishedAt()).isNotNull();
-        ConsumerRecord<String, String> record = consumeSingleRecord();
+
+        ConsumerRecord<String, String> record = consumeRecord(eventId);
+
         assertThat(record.topic()).isEqualTo(TOPIC);
         assertThat(record.key()).isEqualTo(merchantId.toString());
         assertThat(objectMapper.readTree(record.value()))
                 .isEqualTo(objectMapper.readTree(event.payload()));
-        assertThat(headerValue(record, "eventId")).isEqualTo(eventId.toString());
+        assertThat(headerValue(record, "eventId"))
+                .isEqualTo(eventId.toString());
         assertThat(headerValue(record, "eventType"))
                 .isEqualTo("merchant.created.v1");
         assertThat(headerValue(record, "aggregateId"))
                 .isEqualTo(merchantId.toString());
     }
 
-    private ConsumerRecord<String, String> consumeSingleRecord() {
+    @Test
+    void shouldReclaimStaleProcessingEventAndPublishIt() throws JsonProcessingException {
+        UUID eventId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+
+        /*
+         * MerchantOutboxPublisher uses a 60-second claim lease
+         * by default. Make the existing claim clearly stale.
+         */
+        Instant staleClaimedAt = now.minusSeconds(120);
+        Instant createdAt = now.minusSeconds(180);
+
+        MerchantOutboxEvent event = new MerchantOutboxEvent(
+                eventId,
+                merchantId,
+                "merchant.created.v1",
+                "{\"merchantId\":\"" + merchantId + "\"}",
+                createdAt,
+                "PROCESSING",
+                staleClaimedAt
+        );
+        merchantOutboxRepository.save(event);
+
+        MerchantOutboxPublisher publisher =
+                new MerchantOutboxPublisher(merchantOutboxRepository, eventPublisher);
+        publisher.publishPending(10);
+
+        MerchantOutboxJpaEntity persisted = jpaRepository.findById(eventId).orElseThrow();
+        assertThat(persisted.getStatus()).isEqualTo("PUBLISHED");
+        assertThat(persisted.getPublishedAt()).isNotNull();
+        // A successfully published event must no longer hold the processing lease.
+        assertThat(persisted.getClaimedAt()).isNull();
+
+        ConsumerRecord<String, String> record = consumeRecord(eventId);
+
+        assertThat(record.topic()).isEqualTo(TOPIC);
+        assertThat(record.key()).isEqualTo(merchantId.toString());
+        assertThat(objectMapper.readTree(record.value()))
+                .isEqualTo(objectMapper.readTree(event.payload()));
+        assertThat(headerValue(record, "eventId"))
+                .isEqualTo(eventId.toString());
+        assertThat(headerValue(record, "eventType"))
+                .isEqualTo("merchant.created.v1");
+        assertThat(headerValue(record, "aggregateId"))
+                .isEqualTo(merchantId.toString());
+    }
+
+    private ConsumerRecord<String, String> consumeRecord(UUID eventId) {
         Properties properties = new Properties();
 
         properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
@@ -140,17 +192,24 @@ class KafkaMerchantEventPublisherIntegrationTest {
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(properties)) {
             consumer.subscribe(Collections.singletonList(TOPIC));
             long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
+
             while (System.nanoTime() < deadline) {
                 var records = consumer.poll(Duration.ofMillis(250));
-                if (!records.isEmpty()) {
-                    return records.iterator().next();
+                for (ConsumerRecord<String, String> record : records) {
+                    String recordEventId = headerValue(record, "eventId");
+                    if (eventId.toString().equals(recordEventId)) {
+                        return record;
+                    }
                 }
             }
         }
-        throw new AssertionError("No Kafka record received within 15 seconds");
+
+        throw new AssertionError("No Kafka record received for eventId "
+                + eventId + " within 15 seconds");
     }
 
-    private String headerValue(ConsumerRecord<String, String> record, String headerName) {
+    private String headerValue(ConsumerRecord<String, String> record,
+                               String headerName) {
         Header header = record.headers().lastHeader(headerName);
         assertThat(header)
                 .as("Kafka header '%s'", headerName)

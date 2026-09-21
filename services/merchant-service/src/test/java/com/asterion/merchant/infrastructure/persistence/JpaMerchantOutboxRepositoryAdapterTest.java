@@ -222,7 +222,104 @@ class JpaMerchantOutboxRepositoryAdapterTest {
                 "merchant.created.v1",
                 "{\"merchantId\":\"" + merchantId + "\"}",
                 createdAt,
-                status
+                status,
+                null
         );
+    }
+
+    private MerchantOutboxEvent event(UUID eventId, UUID merchantId,
+                                      Instant createdAt, String status,
+                                      Instant claimedAt) {
+        return new MerchantOutboxEvent(
+                eventId,
+                merchantId,
+                "merchant.created.v1",
+                "{\"merchantId\":\"" + merchantId + "\"}",
+                createdAt,
+                status,
+                claimedAt
+        );
+    }
+
+    @Test
+    void shouldClaimNewPendingEvent() {
+        UUID eventId = UUID.randomUUID();
+        MerchantOutboxEvent event = event(
+                eventId,
+                UUID.randomUUID(),
+                Instant.parse("2026-01-01T10:00:00Z"),
+                "NEW"
+        );
+        merchantOutboxRepository.save(event);
+
+        Instant now = Instant.parse("2026-01-01T10:01:00Z");
+        Instant staleBefore = now.minusSeconds(60);
+
+        List<MerchantOutboxEvent> claimed = merchantOutboxRepository
+                .claimPending(10, now, staleBefore);
+
+        assertThat(claimed)
+                .extracting(MerchantOutboxEvent::eventId)
+                .containsExactly(eventId);
+
+        MerchantOutboxJpaEntity persisted = jpaRepository.findById(eventId).orElseThrow();
+
+        assertThat(persisted.getStatus()).isEqualTo("PROCESSING");
+        assertThat(persisted.getClaimedAt()).isEqualTo(now);
+    }
+
+    @Test
+    void shouldNotClaimFreshProcessingEvent() {
+        UUID eventId = UUID.randomUUID();
+        MerchantOutboxEvent event = new MerchantOutboxEvent(
+                eventId,
+                UUID.randomUUID(),
+                "merchant.created.v1",
+                "{\"merchantId\":\"" + eventId + "\"}",
+                Instant.parse("2026-01-01T10:00:00Z"),
+                "PROCESSING",
+                Instant.parse("2026-01-01T10:00:30Z")
+        );
+        merchantOutboxRepository.save(event);
+
+        Instant now = Instant.parse("2026-01-01T10:01:00Z");
+        Instant staleBefore = Instant.parse("2026-01-01T10:00:30Z");
+
+        List<MerchantOutboxEvent> claimed = merchantOutboxRepository
+                .claimPending(10, now, staleBefore);
+        assertThat(claimed).isEmpty();
+    }
+
+    @Test
+    void shouldReclaimStaleProcessingEvent() {
+        UUID eventId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
+
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+        Instant staleClaimedAt = now.minusSeconds(120);
+        Instant staleBefore = now.minusSeconds(60);
+
+        MerchantOutboxEvent processing = event(
+                eventId,
+                merchantId,
+                now.minusSeconds(180),
+                "PROCESSING",
+                staleClaimedAt
+        );
+        merchantOutboxRepository.save(processing);
+
+        List<MerchantOutboxEvent> result = merchantOutboxRepository
+                .claimPending(10, now, staleBefore);
+
+        assertThat(result)
+                .extracting(MerchantOutboxEvent::eventId)
+                .containsExactly(eventId);
+
+        MerchantOutboxJpaEntity persisted = jpaRepository
+                .findById(eventId)
+                .orElseThrow();
+
+        assertThat(persisted.getStatus()).isEqualTo("PROCESSING");
+        assertThat(persisted.getClaimedAt()).isEqualTo(now);
     }
 }

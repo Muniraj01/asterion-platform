@@ -1,9 +1,11 @@
 package com.asterion.merchant.config;
 
+import com.asterion.merchant.application.port.in.ActivateMerchantUseCase;
 import com.asterion.merchant.application.port.in.CreateMerchantUseCase;
 import com.asterion.merchant.application.port.out.EventPublisher;
 import com.asterion.merchant.application.port.out.MerchantOutboxRepository;
 import com.asterion.merchant.application.port.out.MerchantRepository;
+import com.asterion.merchant.application.service.ActivateMerchantService;
 import com.asterion.merchant.application.service.CreateMerchantService;
 import com.asterion.merchant.application.service.MerchantOutboxPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,6 +26,19 @@ public class MerchantApplicationConfiguration {
             ObjectMapper objectMapper) {
 
         return new CreateMerchantService(
+                merchantRepository,
+                merchantOutboxRepository,
+                objectMapper
+        );
+    }
+
+    @Bean
+    public ActivateMerchantUseCase activateMerchantUseCase(
+            MerchantRepository merchantRepository,
+            MerchantOutboxRepository merchantOutboxRepository,
+            ObjectMapper objectMapper) {
+
+        return new ActivateMerchantService(
                 merchantRepository,
                 merchantOutboxRepository,
                 objectMapper

@@ -53,6 +53,13 @@ spring:
               metadata:
                 response-timeout: 2000
 
+            - id: merchant-service
+              uri: ${ASTERION_MERCHANT_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/v1/merchants/**
+              metadata:
+                response-timeout: 2000
+
 resilience4j:
   circuitbreaker:
     instances:

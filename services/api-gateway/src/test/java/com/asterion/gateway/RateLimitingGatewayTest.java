@@ -153,46 +153,60 @@ class RateLimitingGatewayTest {
     @Test
     void shouldMaintainIndependentRateLimitsPerUser()
             throws ExecutionException, InterruptedException {
+
         for (int i = 0; i < 11; i++) {
             mockAuthService.enqueue(new MockResponse()
                     .setResponseCode(200)
                     .setHeader("Content-Type", "application/json")
                     .setBody("""
-                    {
-                      "email": "test@example.com"
-                    }
-                    """));
+                        {
+                          "email": "test@example.com"
+                        }
+                        """));
         }
 
         String userOneToken = createValidToken("11111111-1111-1111-1111-111111111111");
         String userTwoToken = createValidToken("22222222-2222-2222-2222-222222222222");
 
-        // start 11 requests concurrently and verify that the burst allows 10
-        // while the 11th is rejected (per user - userOne here).
         ExecutorService executor = Executors.newFixedThreadPool(11);
+        CountDownLatch ready = new CountDownLatch(11);
+        CountDownLatch start = new CountDownLatch(1);
+
         try {
             List<Future<Integer>> futures = new ArrayList<>();
             for (int i = 0; i < 11; i++) {
-                futures.add(executor.submit(() -> webTestClient
-                        .get()
-                        .uri("/api/v1/users/me")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + userOneToken)
-                        .exchange()
-                        .returnResult(Void.class)
-                        .getStatus()
-                        .value()
-                ));
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    return webTestClient
+                            .get()
+                            .uri("/api/v1/users/me")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + userOneToken)
+                            .exchange()
+                            .returnResult(Void.class)
+                            .getStatus()
+                            .value();
+                }));
             }
+
+            assertThat(ready.await(2, TimeUnit.SECONDS))
+                    .as("All requests should be ready before the burst starts")
+                    .isTrue();
+
+            start.countDown();
 
             List<Integer> statuses = new ArrayList<>();
             for (Future<Integer> future : futures) {
                 statuses.add(future.get());
             }
+
             assertThat(statuses).containsExactlyInAnyOrder(
                     200, 200, 200, 200, 200,
                     200, 200, 200, 200, 200,
                     429);
+
         } finally {
+            start.countDown();
             executor.shutdownNow();
         }
 

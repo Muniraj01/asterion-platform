@@ -2,6 +2,7 @@ package com.asterion.merchant.application.service;
 
 import com.asterion.merchant.application.command.ActivateMerchantCommand;
 import com.asterion.merchant.application.event.MerchantActivatedEvent;
+import com.asterion.merchant.application.exception.MerchantOwnershipException;
 import com.asterion.merchant.application.model.MerchantOutboxEvent;
 import com.asterion.merchant.application.port.in.ActivateMerchantUseCase;
 import com.asterion.merchant.application.port.out.MerchantOutboxRepository;
@@ -41,11 +42,17 @@ public class ActivateMerchantService implements ActivateMerchantUseCase {
     public Merchant activate(ActivateMerchantCommand command) {
         requireNonNull(command, "command must not be null");
         requireNonNull(command.merchantId(), "merchantId must not be null");
+        requireNonNull(command.authenticatedUserId(),
+                "authenticatedUserId must not be null");
 
         Merchant merchant = merchantRepository.findById(command.merchantId())
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "Merchant not found: " + command.merchantId()
-                ));
+                        "Merchant not found: " + command.merchantId()));
+
+        if (!merchant.ownerUserId().equals(command.authenticatedUserId())) {
+            throw new MerchantOwnershipException(
+                    "Authenticated user does not own merchant: " + merchant.id());
+        }
 
         merchant.activate();
         Merchant activatedMerchant = merchantRepository.save(merchant);

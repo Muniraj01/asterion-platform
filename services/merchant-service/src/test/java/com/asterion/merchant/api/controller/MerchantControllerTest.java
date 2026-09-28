@@ -43,12 +43,9 @@ class MerchantControllerTest {
         createMerchantUseCase = mock(CreateMerchantUseCase.class);
         activateMerchantUseCase = mock(ActivateMerchantUseCase.class);
         objectMapper = new ObjectMapper().findAndRegisterModules();
-
         MerchantController controller = new MerchantController(
                 createMerchantUseCase, activateMerchantUseCase);
-        mockMvc = MockMvcBuilders
-                .standaloneSetup(controller)
-                .build();
+        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
     // -------------------------------------------------------------------------
@@ -192,6 +189,7 @@ class MerchantControllerTest {
         verifyNoInteractions(createMerchantUseCase);
     }
 
+
     // -------------------------------------------------------------------------
     // G2 - Merchant activation
     // -------------------------------------------------------------------------
@@ -281,4 +279,5 @@ class MerchantControllerTest {
                 command.merchantId().equals(MERCHANT_ID) &&
                         command.authenticatedUserId().equals(USER_ID)));
     }
+
 }

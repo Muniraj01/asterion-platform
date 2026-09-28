@@ -41,10 +41,7 @@ class ActivateMerchantServiceTest {
     @BeforeEach
     void setUp() {
         service = new ActivateMerchantService(
-                merchantRepository,
-                merchantOutboxRepository,
-                objectMapper
-        );
+                merchantRepository, merchantOutboxRepository, objectMapper);
     }
 
     @Test
@@ -64,8 +61,7 @@ class ActivateMerchantServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         Merchant result = service.activate(
-                new ActivateMerchantCommand(merchant.id())
-        );
+                new ActivateMerchantCommand(merchant.id(), merchant.ownerUserId()));
 
         assertThat(result.id()).isEqualTo(merchant.id());
         assertThat(result.status()).isEqualTo(MerchantStatus.ACTIVE);
@@ -90,11 +86,14 @@ class ActivateMerchantServiceTest {
         when(merchantOutboxRepository.save(any(MerchantOutboxEvent.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        Merchant result = service.activate(new ActivateMerchantCommand(merchant.id()));
+        Merchant result = service.activate(
+                new ActivateMerchantCommand(merchant.id(), merchant.ownerUserId()));
+
         assertThat(result.status()).isEqualTo(MerchantStatus.ACTIVE);
 
         ArgumentCaptor<MerchantOutboxEvent> captor =
                 ArgumentCaptor.forClass(MerchantOutboxEvent.class);
+
         verify(merchantOutboxRepository).save(captor.capture());
 
         MerchantOutboxEvent outboxEvent = captor.getValue();
@@ -124,10 +123,12 @@ class ActivateMerchantServiceTest {
         when(merchantOutboxRepository.save(any(MerchantOutboxEvent.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.activate(new ActivateMerchantCommand(merchant.id()));
+        service.activate(
+                new ActivateMerchantCommand(merchant.id(), merchant.ownerUserId()));
 
         ArgumentCaptor<MerchantActivatedEvent> eventCaptor =
                 ArgumentCaptor.forClass(MerchantActivatedEvent.class);
+
         verify(objectMapper).writeValueAsString(eventCaptor.capture());
 
         MerchantActivatedEvent event = eventCaptor.getValue();
@@ -141,12 +142,13 @@ class ActivateMerchantServiceTest {
     @Test
     void shouldRejectMissingMerchant() {
         UUID merchantId = UUID.randomUUID();
+        UUID authenticatedUserId = UUID.randomUUID();
 
         when(merchantRepository.findById(merchantId))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service
-                .activate(new ActivateMerchantCommand(merchantId)))
+                .activate(new ActivateMerchantCommand(merchantId, authenticatedUserId)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Merchant not found: " + merchantId);
 
@@ -168,7 +170,9 @@ class ActivateMerchantServiceTest {
 
     @Test
     void shouldRejectNullMerchantId() {
-        ActivateMerchantCommand command = new ActivateMerchantCommand(null);
+        ActivateMerchantCommand command =
+                new ActivateMerchantCommand(null, null);
+
         assertThatThrownBy(() -> service
                 .activate(command))
                 .isInstanceOf(NullPointerException.class)
@@ -187,7 +191,7 @@ class ActivateMerchantServiceTest {
                 .thenReturn(Optional.of(merchant));
 
         assertThatThrownBy(() -> service
-                .activate(new ActivateMerchantCommand(merchant.id())))
+                .activate(new ActivateMerchantCommand(merchant.id(), merchant.ownerUserId())))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Only a pending merchant can be activated");
 
@@ -208,7 +212,7 @@ class ActivateMerchantServiceTest {
                 .thenThrow(new IllegalStateException("database failure"));
 
         assertThatThrownBy(() -> service
-                .activate(new ActivateMerchantCommand(merchant.id())))
+                .activate(new ActivateMerchantCommand(merchant.id(), merchant.ownerUserId())))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("database failure");
 
@@ -232,7 +236,7 @@ class ActivateMerchantServiceTest {
                 .thenThrow(new JsonProcessingException("serialization failure") {});
 
         assertThatThrownBy(() -> service
-                .activate(new ActivateMerchantCommand(merchant.id())))
+                .activate(new ActivateMerchantCommand(merchant.id(), merchant.ownerUserId())))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Failed to serialize MerchantActivatedEvent");
 

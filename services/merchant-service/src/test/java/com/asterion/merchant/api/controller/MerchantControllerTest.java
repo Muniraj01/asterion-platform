@@ -3,6 +3,7 @@ package com.asterion.merchant.api.controller;
 import com.asterion.merchant.application.exception.MerchantOwnershipException;
 import com.asterion.merchant.application.port.in.ActivateMerchantUseCase;
 import com.asterion.merchant.application.port.in.CreateMerchantUseCase;
+import com.asterion.merchant.application.port.in.GetMerchantUseCase;
 import com.asterion.merchant.domain.model.Merchant;
 import com.asterion.merchant.domain.model.MerchantStatus;
 import com.asterion.merchant.infrastructure.security.MerchantUserIdentity;
@@ -19,6 +20,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -35,6 +37,7 @@ class MerchantControllerTest {
 
     private CreateMerchantUseCase createMerchantUseCase;
     private ActivateMerchantUseCase activateMerchantUseCase;
+    private GetMerchantUseCase getMerchantUseCase;
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
 
@@ -42,9 +45,10 @@ class MerchantControllerTest {
     void setUp() {
         createMerchantUseCase = mock(CreateMerchantUseCase.class);
         activateMerchantUseCase = mock(ActivateMerchantUseCase.class);
+        getMerchantUseCase = mock(GetMerchantUseCase.class);
         objectMapper = new ObjectMapper().findAndRegisterModules();
         MerchantController controller = new MerchantController(
-                createMerchantUseCase, activateMerchantUseCase);
+                createMerchantUseCase, activateMerchantUseCase, getMerchantUseCase);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -276,6 +280,82 @@ class MerchantControllerTest {
                 .andExpect(status().isConflict());
 
         verify(activateMerchantUseCase).activate(argThat(command ->
+                command.merchantId().equals(MERCHANT_ID) &&
+                        command.authenticatedUserId().equals(USER_ID)));
+    }
+
+    // -------------------------------------------------------------------------
+    // G3 - Merchant Retrieval
+    // -------------------------------------------------------------------------
+
+    @Test
+    void shouldGetMerchantUsingAuthenticatedUserIdentity() throws Exception {
+        Merchant merchant = Merchant.create(
+                USER_ID,
+                "Asterion Technologies",
+                "Asterion Technologies Private Limited",
+                "merchant@example.com"
+        );
+
+        when(getMerchantUseCase.get(any())).thenReturn(merchant);
+
+        mockMvc.perform(get("/api/v1/merchants/{merchantId}", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "user@example.com", "USER"))
+                        .accept(MediaType.APPLICATION_JSON)
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.merchantId").value(merchant.id().toString()))
+                .andExpect(jsonPath("$.ownerUserId").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.businessName")
+                        .value("Asterion Technologies"));
+
+        verify(getMerchantUseCase).get(argThat(command ->
+                command.merchantId().equals(MERCHANT_ID) &&
+                        command.authenticatedUserId().equals(USER_ID)));
+    }
+
+    @Test
+    void shouldRejectGetWithoutTrustedUserIdentity() throws Exception {
+        mockMvc.perform(get("/api/v1/merchants/{merchantId}", MERCHANT_ID)
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(getMerchantUseCase);
+    }
+
+    @Test
+    void shouldReturnForbiddenWhenUserDoesNotOwnMerchant() throws Exception {
+        when(getMerchantUseCase.get(any()))
+                .thenThrow(new MerchantOwnershipException(
+                        "Authenticated user does not own merchant: " + MERCHANT_ID));
+
+        mockMvc.perform(get("/api/v1/merchants/{merchantId}", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        OTHER_USER_ID, "other@example.com", "USER"))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+
+        verify(getMerchantUseCase).get(argThat(command ->
+                command.merchantId().equals(MERCHANT_ID) &&
+                        command.authenticatedUserId().equals(OTHER_USER_ID)));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenMerchantDoesNotExistWhileRetrieving() throws Exception {
+        when(getMerchantUseCase.get(any())).thenThrow(
+                new IllegalArgumentException("Merchant not found: " + MERCHANT_ID));
+
+        mockMvc.perform(get("/api/v1/merchants/{merchantId}", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "user@example.com", "USER"))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound());
+
+        verify(getMerchantUseCase).get(argThat(command ->
                 command.merchantId().equals(MERCHANT_ID) &&
                         command.authenticatedUserId().equals(USER_ID)));
     }

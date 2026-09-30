@@ -1,22 +1,28 @@
 package com.asterion.merchant.api.controller;
 
+import com.asterion.merchant.application.command.ListMerchantsCommand;
 import com.asterion.merchant.application.exception.MerchantOwnershipException;
+import com.asterion.merchant.application.model.MerchantPage;
 import com.asterion.merchant.application.port.in.ActivateMerchantUseCase;
 import com.asterion.merchant.application.port.in.CreateMerchantUseCase;
 import com.asterion.merchant.application.port.in.GetMerchantUseCase;
+import com.asterion.merchant.application.port.in.ListMerchantsUseCase;
 import com.asterion.merchant.domain.model.Merchant;
 import com.asterion.merchant.domain.model.MerchantStatus;
 import com.asterion.merchant.infrastructure.security.MerchantUserIdentity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
@@ -38,6 +44,8 @@ class MerchantControllerTest {
     private CreateMerchantUseCase createMerchantUseCase;
     private ActivateMerchantUseCase activateMerchantUseCase;
     private GetMerchantUseCase getMerchantUseCase;
+    private ListMerchantsUseCase listMerchantsUseCase;
+
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
 
@@ -46,9 +54,12 @@ class MerchantControllerTest {
         createMerchantUseCase = mock(CreateMerchantUseCase.class);
         activateMerchantUseCase = mock(ActivateMerchantUseCase.class);
         getMerchantUseCase = mock(GetMerchantUseCase.class);
+        listMerchantsUseCase = mock(ListMerchantsUseCase.class);
+
         objectMapper = new ObjectMapper().findAndRegisterModules();
         MerchantController controller = new MerchantController(
-                createMerchantUseCase, activateMerchantUseCase, getMerchantUseCase);
+                createMerchantUseCase, activateMerchantUseCase,
+                getMerchantUseCase, listMerchantsUseCase);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -358,6 +369,97 @@ class MerchantControllerTest {
         verify(getMerchantUseCase).get(argThat(command ->
                 command.merchantId().equals(MERCHANT_ID) &&
                         command.authenticatedUserId().equals(USER_ID)));
+    }
+
+    // -------------------------------------------------------------------------
+    // G4 - Merchant Listing
+    // -------------------------------------------------------------------------
+
+    @Test
+    void shouldListMerchantsUsingAuthenticatedUserIdentity() throws Exception {
+        Merchant merchant = Merchant.create(
+                USER_ID,
+                "Asterion Technologies",
+                "Asterion Technologies Private Limited",
+                "merchant@example.com"
+        );
+
+        MerchantPage merchantPage = new MerchantPage(
+                List.of(merchant), 0, 20, 1, 1
+        );
+
+        when(listMerchantsUseCase.list(any(ListMerchantsCommand.class)))
+                .thenReturn(merchantPage);
+
+        mockMvc.perform(get("/api/v1/merchants")
+                        .param("page", "0")
+                        .param("size", "20")
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].merchantId")
+                        .value(merchant.id().toString()))
+                .andExpect(jsonPath("$.content[0].ownerUserId")
+                        .value(USER_ID.toString()))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1));
+
+        ArgumentCaptor<ListMerchantsCommand> captor =
+                ArgumentCaptor.forClass(ListMerchantsCommand.class);
+        verify(listMerchantsUseCase).list(captor.capture());
+
+        assertThat(captor.getValue().authenticatedUserId()).isEqualTo(USER_ID);
+        assertThat(captor.getValue().page()).isEqualTo(0);
+        assertThat(captor.getValue().size()).isEqualTo(20);
+    }
+
+    @Test
+    void shouldReturnEmptyListWhenUserOwnsNoMerchants() throws Exception {
+        MerchantPage merchantPage = new MerchantPage(
+                List.of(), 0, 20, 0, 0
+        );
+
+        when(listMerchantsUseCase.list(any(ListMerchantsCommand.class)))
+                .thenReturn(merchantPage);
+
+        mockMvc.perform(get("/api/v1/merchants")
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isEmpty())
+                .andExpect(jsonPath("$.totalElements").value(0))
+                .andExpect(jsonPath("$.totalPages").value(0));
+    }
+
+    @Test
+    void shouldRejectListWithoutTrustedUserIdentity() throws Exception {
+        mockMvc.perform(get("/api/v1/merchants"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(listMerchantsUseCase);
+    }
+
+    @Test
+    void shouldRejectInvalidPaginationParameters() throws Exception {
+        mockMvc.perform(get("/api/v1/merchants")
+                        .param("page", "-1")
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/v1/merchants")
+                        .param("size", "0")
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(listMerchantsUseCase);
     }
 
 }

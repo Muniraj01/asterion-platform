@@ -12,6 +12,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -73,5 +74,78 @@ class JpaMerchantRepositoryAdapterTest {
     void shouldReturnEmptyWhenMerchantDoesNotExist() {
         Optional<Merchant> result = merchantRepository.findById(UUID.randomUUID());
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void shouldFindOnlyOwnerMerchantsInCreatedAtDescendingOrderWithPagination() {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID otherOwnerUserId = UUID.randomUUID();
+
+        Merchant oldest = Merchant.reconstitute(
+                UUID.randomUUID(),
+                ownerUserId,
+                "Oldest",
+                "Oldest Legal",
+                "oldest@example.com",
+                MerchantStatus.PENDING,
+                Instant.parse("2026-01-01T10:00:00Z")
+        );
+
+        Merchant newest = Merchant.reconstitute(
+                UUID.randomUUID(),
+                ownerUserId,
+                "Newest",
+                "Newest Legal",
+                "newest@example.com",
+                MerchantStatus.PENDING,
+                Instant.parse("2026-01-01T10:02:00Z")
+        );
+
+        Merchant middle = Merchant.reconstitute(
+                UUID.randomUUID(),
+                ownerUserId,
+                "Middle",
+                "Middle Legal",
+                "middle@example.com",
+                MerchantStatus.PENDING,
+                Instant.parse("2026-01-01T10:01:00Z")
+        );
+
+        Merchant otherOwner = Merchant.reconstitute(
+                UUID.randomUUID(),
+                otherOwnerUserId,
+                "Other",
+                "Other Legal",
+                "other@example.com",
+                MerchantStatus.PENDING,
+                Instant.parse("2026-01-01T10:03:00Z")
+        );
+
+        merchantRepository.save(oldest);
+        merchantRepository.save(newest);
+        merchantRepository.save(middle);
+        merchantRepository.save(otherOwner);
+
+        var firstPage = merchantRepository.findByOwnerUserId(ownerUserId, 0, 2);
+
+        assertThat(firstPage.content())
+                .extracting(Merchant::id)
+                .containsExactly(newest.id(), middle.id());
+
+        assertThat(firstPage.page()).isEqualTo(0);
+        assertThat(firstPage.size()).isEqualTo(2);
+        assertThat(firstPage.totalElements()).isEqualTo(3);
+        assertThat(firstPage.totalPages()).isEqualTo(2);
+
+        var secondPage = merchantRepository.findByOwnerUserId(ownerUserId, 1, 2);
+
+        assertThat(secondPage.content())
+                .extracting(Merchant::id)
+                .containsExactly(oldest.id());
+
+        assertThat(secondPage.page()).isEqualTo(1);
+        assertThat(secondPage.size()).isEqualTo(2);
+        assertThat(secondPage.totalElements()).isEqualTo(3);
+        assertThat(secondPage.totalPages()).isEqualTo(2);
     }
 }

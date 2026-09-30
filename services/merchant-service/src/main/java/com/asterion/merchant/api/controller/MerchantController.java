@@ -1,14 +1,18 @@
 package com.asterion.merchant.api.controller;
 
 import com.asterion.merchant.api.request.CreateMerchantRequest;
+import com.asterion.merchant.api.response.MerchantPageResponse;
 import com.asterion.merchant.api.response.MerchantResponse;
 import com.asterion.merchant.application.command.ActivateMerchantCommand;
 import com.asterion.merchant.application.command.CreateMerchantCommand;
 import com.asterion.merchant.application.command.GetMerchantCommand;
+import com.asterion.merchant.application.command.ListMerchantsCommand;
 import com.asterion.merchant.application.exception.MerchantOwnershipException;
 import com.asterion.merchant.application.port.in.ActivateMerchantUseCase;
 import com.asterion.merchant.application.port.in.CreateMerchantUseCase;
 import com.asterion.merchant.application.port.in.GetMerchantUseCase;
+import com.asterion.merchant.application.port.in.ListMerchantsUseCase;
+import com.asterion.merchant.application.model.MerchantPage;
 import com.asterion.merchant.domain.model.Merchant;
 import com.asterion.merchant.infrastructure.security.MerchantUserIdentity;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,39 +30,62 @@ public class MerchantController {
     private final CreateMerchantUseCase createMerchantUseCase;
     private final ActivateMerchantUseCase activateMerchantUseCase;
     private final GetMerchantUseCase getMerchantUseCase;
+    private final ListMerchantsUseCase listMerchantsUseCase;
 
     public MerchantController(
             CreateMerchantUseCase createMerchantUseCase,
             ActivateMerchantUseCase activateMerchantUseCase,
-            GetMerchantUseCase getMerchantUseCase) {
+            GetMerchantUseCase getMerchantUseCase,
+            ListMerchantsUseCase listMerchantsUseCase) {
+
         this.createMerchantUseCase = createMerchantUseCase;
         this.activateMerchantUseCase = activateMerchantUseCase;
         this.getMerchantUseCase = getMerchantUseCase;
+        this.listMerchantsUseCase = listMerchantsUseCase;
     }
 
     @PostMapping
     public ResponseEntity<MerchantResponse> createMerchant(
             @Valid @RequestBody CreateMerchantRequest request,
             HttpServletRequest httpRequest) {
+
         MerchantUserIdentity identity = (MerchantUserIdentity) httpRequest
                 .getAttribute(MerchantUserIdentity.class.getName());
 
-        if (identity == null) {
+        if (identity == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
 
         Merchant merchant = createMerchantUseCase.create(
                 new CreateMerchantCommand(
-                        identity.userId(),
-                        request.businessName(),
-                        request.legalName(),
-                        request.contactEmail()
+                        identity.userId(), request.businessName(),
+                        request.legalName(), request.contactEmail()
                 )
         );
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(MerchantResponse.from(merchant));
+    }
+
+    @GetMapping
+    public ResponseEntity<MerchantPageResponse> listMerchants(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            HttpServletRequest httpRequest) {
+
+        MerchantUserIdentity identity = (MerchantUserIdentity) httpRequest
+                .getAttribute(MerchantUserIdentity.class.getName());
+
+        if (identity == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        if (page < 0 || size <= 0)
+            return ResponseEntity.badRequest().build();
+
+        MerchantPage merchantPage = listMerchantsUseCase.list(
+                new ListMerchantsCommand(identity.userId(), page, size));
+
+        return ResponseEntity.ok(MerchantPageResponse.from(merchantPage));
     }
 
     @GetMapping("/{merchantId}")
@@ -69,17 +96,18 @@ public class MerchantController {
         MerchantUserIdentity identity = (MerchantUserIdentity) httpRequest
                 .getAttribute(MerchantUserIdentity.class.getName());
 
-        if (identity == null) {
+        if (identity == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
 
         try {
             Merchant merchant = getMerchantUseCase.get(
-                    new GetMerchantCommand(merchantId, identity.userId()));
+                    new GetMerchantCommand(merchantId, identity.userId())
+            );
             return ResponseEntity.ok(MerchantResponse.from(merchant));
 
         } catch (MerchantOwnershipException exception) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+
         } catch (IllegalArgumentException exception) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
@@ -93,19 +121,21 @@ public class MerchantController {
         MerchantUserIdentity identity = (MerchantUserIdentity) httpRequest
                 .getAttribute(MerchantUserIdentity.class.getName());
 
-        if (identity == null) {
+        if (identity == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
 
         try {
             Merchant merchant = activateMerchantUseCase.activate(
-                    new ActivateMerchantCommand(merchantId, identity.userId()));
+                    new ActivateMerchantCommand(merchantId, identity.userId())
+            );
             return ResponseEntity.ok(MerchantResponse.from(merchant));
 
         } catch (MerchantOwnershipException exception) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+
         } catch (IllegalArgumentException exception) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+
         } catch (IllegalStateException exception) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
         }

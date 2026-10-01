@@ -45,6 +45,9 @@ class MerchantControllerTest {
     private GetMerchantUseCase getMerchantUseCase;
     private ListMerchantsUseCase listMerchantsUseCase;
     private UpdateMerchantUseCase updateMerchantUseCase;
+    private SuspendMerchantUseCase suspendMerchantUseCase;
+    private ReactivateMerchantUseCase reactivateMerchantUseCase;
+    private TerminateMerchantUseCase terminateMerchantUseCase;
 
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
@@ -56,11 +59,21 @@ class MerchantControllerTest {
         getMerchantUseCase = mock(GetMerchantUseCase.class);
         listMerchantsUseCase = mock(ListMerchantsUseCase.class);
         updateMerchantUseCase = mock(UpdateMerchantUseCase.class);
+        suspendMerchantUseCase = mock(SuspendMerchantUseCase.class);
+        reactivateMerchantUseCase = mock(ReactivateMerchantUseCase.class);
+        terminateMerchantUseCase = mock(TerminateMerchantUseCase.class);
 
         objectMapper = new ObjectMapper().findAndRegisterModules();
         MerchantController controller = new MerchantController(
-                createMerchantUseCase, activateMerchantUseCase, getMerchantUseCase,
-                listMerchantsUseCase, updateMerchantUseCase);
+                createMerchantUseCase,
+                activateMerchantUseCase,
+                suspendMerchantUseCase,
+                reactivateMerchantUseCase,
+                terminateMerchantUseCase,
+                getMerchantUseCase,
+                listMerchantsUseCase,
+                updateMerchantUseCase
+        );
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -624,6 +637,270 @@ class MerchantControllerTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(updateMerchantUseCase);
+    }
+
+    // -------------------------------------------------------------------------
+    // G6 - Merchant Lifecycle Management
+    // -------------------------------------------------------------------------
+
+    @Test
+    void shouldSuspendMerchantUsingAuthenticatedUserIdentity() throws Exception {
+        Merchant merchant = Merchant.reconstitute(
+                MERCHANT_ID,
+                USER_ID,
+                "Acme Store",
+                "Acme Technologies Pvt Ltd",
+                "owner@example.com",
+                MerchantStatus.SUSPENDED,
+                Instant.parse("2026-09-10T10:00:00Z")
+        );
+
+        when(suspendMerchantUseCase.suspend(any())).thenReturn(merchant);
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/suspend", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.merchantId").value(MERCHANT_ID.toString()))
+                .andExpect(jsonPath("$.status").value("SUSPENDED"));
+
+        verify(suspendMerchantUseCase).suspend(argThat(command ->
+                command.merchantId().equals(MERCHANT_ID) &&
+                        command.authenticatedUserId().equals(USER_ID)
+                )
+        );
+    }
+
+    @Test
+    void shouldRejectSuspendWithoutTrustedUserIdentity() throws Exception {
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/suspend", MERCHANT_ID))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(suspendMerchantUseCase);
+    }
+
+    @Test
+    void shouldReturnForbiddenWhenSuspendingMerchantNotOwnedByUser() throws Exception {
+        when(suspendMerchantUseCase.suspend(any()))
+                .thenThrow(new MerchantOwnershipException(
+                        "Authenticated user does not own merchant: " + MERCHANT_ID));
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/suspend", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        OTHER_USER_ID, "other@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenSuspendingMissingMerchant() throws Exception {
+
+        when(suspendMerchantUseCase.suspend(any()))
+                .thenThrow(new IllegalArgumentException(
+                        "Merchant not found: " + MERCHANT_ID));
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/suspend", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldReturnConflictWhenSuspendingNonActiveMerchant() throws Exception {
+
+        when(suspendMerchantUseCase.suspend(any()))
+                .thenThrow(new IllegalStateException(
+                        "Only an active merchant can be suspended"));
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/suspend", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldReactivateMerchantUsingAuthenticatedUserIdentity() throws Exception {
+
+        Merchant merchant = Merchant.reconstitute(
+                MERCHANT_ID,
+                USER_ID,
+                "Acme Store",
+                "Acme Technologies Pvt Ltd",
+                "owner@example.com",
+                MerchantStatus.ACTIVE,
+                Instant.parse("2026-09-10T10:00:00Z")
+        );
+
+        when(reactivateMerchantUseCase.reactivate(any())).thenReturn(merchant);
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/reactivate", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.merchantId").value(MERCHANT_ID.toString()))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        verify(reactivateMerchantUseCase).reactivate(argThat(command ->
+                command.merchantId().equals(MERCHANT_ID) &&
+                        command.authenticatedUserId().equals(USER_ID)
+                )
+        );
+    }
+
+    @Test
+    void shouldRejectReactivateWithoutTrustedUserIdentity() throws Exception {
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/reactivate", MERCHANT_ID))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(reactivateMerchantUseCase);
+    }
+
+    @Test
+    void shouldReturnForbiddenWhenReactivatingMerchantNotOwnedByUser() throws Exception {
+
+        when(reactivateMerchantUseCase.reactivate(any()))
+                .thenThrow(new MerchantOwnershipException(
+                        "Authenticated user does not own merchant: " + MERCHANT_ID));
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/reactivate", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        OTHER_USER_ID, "other@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenReactivatingMissingMerchant() throws Exception {
+        when(reactivateMerchantUseCase.reactivate(any()))
+                .thenThrow(new IllegalArgumentException("Merchant not found: " + MERCHANT_ID));
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/reactivate", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldReturnConflictWhenReactivatingNonSuspendedMerchant() throws Exception {
+
+        when(reactivateMerchantUseCase.reactivate(any()))
+                .thenThrow(new IllegalStateException(
+                        "Only a suspended merchant can be reactivated"));
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/reactivate", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldTerminateMerchantUsingAuthenticatedUserIdentity() throws Exception {
+
+        Merchant merchant = Merchant.reconstitute(
+                MERCHANT_ID,
+                USER_ID,
+                "Acme Store",
+                "Acme Technologies Pvt Ltd",
+                "owner@example.com",
+                MerchantStatus.TERMINATED,
+                Instant.parse("2026-09-10T10:00:00Z")
+        );
+
+        when(terminateMerchantUseCase.terminate(any())).thenReturn(merchant);
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/terminate", MERCHANT_ID)
+                        .requestAttr(
+                                MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.merchantId").value(MERCHANT_ID.toString()))
+                .andExpect(jsonPath("$.status").value("TERMINATED"));
+
+        verify(terminateMerchantUseCase).terminate(argThat(command ->
+                command.merchantId().equals(MERCHANT_ID) &&
+                        command.authenticatedUserId().equals(USER_ID)
+                )
+        );
+    }
+
+    @Test
+    void shouldRejectTerminateWithoutTrustedUserIdentity() throws Exception {
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/terminate", MERCHANT_ID))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(terminateMerchantUseCase);
+    }
+
+    @Test
+    void shouldReturnForbiddenWhenTerminatingMerchantNotOwnedByUser() throws Exception {
+        when(terminateMerchantUseCase.terminate(any()))
+                .thenThrow(new MerchantOwnershipException(
+                        "Authenticated user does not own merchant: " + MERCHANT_ID));
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/terminate", MERCHANT_ID)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        OTHER_USER_ID, "other@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenTerminatingMissingMerchant() throws Exception {
+
+        when(terminateMerchantUseCase.terminate(any()))
+                .thenThrow(new IllegalArgumentException("Merchant not found: " + MERCHANT_ID));
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/terminate", MERCHANT_ID)
+                        .requestAttr(
+                                MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldReturnConflictWhenTerminatingNonActiveMerchant() throws Exception {
+        when(terminateMerchantUseCase.terminate(any()))
+                .thenThrow(new IllegalStateException("Only an active merchant can be terminated"));
+
+        mockMvc.perform(post("/api/v1/merchants/{merchantId}/terminate", MERCHANT_ID)
+                        .requestAttr(
+                                MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isConflict());
     }
 
 }

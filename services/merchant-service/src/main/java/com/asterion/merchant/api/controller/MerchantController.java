@@ -6,8 +6,8 @@ import com.asterion.merchant.api.response.MerchantPageResponse;
 import com.asterion.merchant.api.response.MerchantResponse;
 import com.asterion.merchant.application.command.*;
 import com.asterion.merchant.application.exception.MerchantOwnershipException;
-import com.asterion.merchant.application.port.in.*;
 import com.asterion.merchant.application.model.MerchantPage;
+import com.asterion.merchant.application.port.in.*;
 import com.asterion.merchant.domain.model.Merchant;
 import com.asterion.merchant.infrastructure.security.MerchantUserIdentity;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,6 +24,9 @@ public class MerchantController {
 
     private final CreateMerchantUseCase createMerchantUseCase;
     private final ActivateMerchantUseCase activateMerchantUseCase;
+    private final SuspendMerchantUseCase suspendMerchantUseCase;
+    private final ReactivateMerchantUseCase reactivateMerchantUseCase;
+    private final TerminateMerchantUseCase terminateMerchantUseCase;
     private final GetMerchantUseCase getMerchantUseCase;
     private final ListMerchantsUseCase listMerchantsUseCase;
     private final UpdateMerchantUseCase updateMerchantUseCase;
@@ -31,12 +34,18 @@ public class MerchantController {
     public MerchantController(
             CreateMerchantUseCase createMerchantUseCase,
             ActivateMerchantUseCase activateMerchantUseCase,
+            SuspendMerchantUseCase suspendMerchantUseCase,
+            ReactivateMerchantUseCase reactivateMerchantUseCase,
+            TerminateMerchantUseCase terminateMerchantUseCase,
             GetMerchantUseCase getMerchantUseCase,
             ListMerchantsUseCase listMerchantsUseCase,
             UpdateMerchantUseCase updateMerchantUseCase) {
 
         this.createMerchantUseCase = createMerchantUseCase;
         this.activateMerchantUseCase = activateMerchantUseCase;
+        this.suspendMerchantUseCase = suspendMerchantUseCase;
+        this.reactivateMerchantUseCase = reactivateMerchantUseCase;
+        this.terminateMerchantUseCase = terminateMerchantUseCase;
         this.getMerchantUseCase = getMerchantUseCase;
         this.listMerchantsUseCase = listMerchantsUseCase;
         this.updateMerchantUseCase = updateMerchantUseCase;
@@ -55,8 +64,10 @@ public class MerchantController {
 
         Merchant merchant = createMerchantUseCase.create(
                 new CreateMerchantCommand(
-                        identity.userId(), request.businessName(),
-                        request.legalName(), request.contactEmail()
+                        identity.userId(),
+                        request.businessName(),
+                        request.legalName(),
+                        request.contactEmail()
                 )
         );
 
@@ -101,6 +112,7 @@ public class MerchantController {
             Merchant merchant = getMerchantUseCase.get(
                     new GetMerchantCommand(merchantId, identity.userId())
             );
+
             return ResponseEntity.ok(MerchantResponse.from(merchant));
 
         } catch (MerchantOwnershipException exception) {
@@ -126,6 +138,94 @@ public class MerchantController {
             Merchant merchant = activateMerchantUseCase.activate(
                     new ActivateMerchantCommand(merchantId, identity.userId())
             );
+
+            return ResponseEntity.ok(MerchantResponse.from(merchant));
+
+        } catch (MerchantOwnershipException exception) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+
+        } catch (IllegalStateException exception) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+    }
+
+    @PostMapping("/{merchantId}/suspend")
+    public ResponseEntity<MerchantResponse> suspendMerchant(
+            @PathVariable UUID merchantId,
+            HttpServletRequest httpRequest) {
+
+        MerchantUserIdentity identity = (MerchantUserIdentity) httpRequest
+                .getAttribute(MerchantUserIdentity.class.getName());
+
+        if (identity == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        try {
+            Merchant merchant = suspendMerchantUseCase.suspend(
+                    new SuspendMerchantCommand(merchantId, identity.userId())
+            );
+
+            return ResponseEntity.ok(MerchantResponse.from(merchant));
+
+        } catch (MerchantOwnershipException exception) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+
+        } catch (IllegalStateException exception) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+    }
+
+    @PostMapping("/{merchantId}/reactivate")
+    public ResponseEntity<MerchantResponse> reactivateMerchant(
+            @PathVariable UUID merchantId,
+            HttpServletRequest httpRequest) {
+
+        MerchantUserIdentity identity = (MerchantUserIdentity) httpRequest
+                .getAttribute(MerchantUserIdentity.class.getName());
+
+        if (identity == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        try {
+            Merchant merchant = reactivateMerchantUseCase.reactivate(
+                    new ReactivateMerchantCommand(merchantId, identity.userId())
+            );
+
+            return ResponseEntity.ok(MerchantResponse.from(merchant));
+
+        } catch (MerchantOwnershipException exception) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+
+        } catch (IllegalStateException exception) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+    }
+
+    @PostMapping("/{merchantId}/terminate")
+    public ResponseEntity<MerchantResponse> terminateMerchant(
+            @PathVariable UUID merchantId,
+            HttpServletRequest httpRequest) {
+
+        MerchantUserIdentity identity = (MerchantUserIdentity) httpRequest
+                .getAttribute(MerchantUserIdentity.class.getName());
+
+        if (identity == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        try {
+            Merchant merchant = terminateMerchantUseCase.terminate(
+                    new TerminateMerchantCommand(merchantId, identity.userId())
+            );
+
             return ResponseEntity.ok(MerchantResponse.from(merchant));
 
         } catch (MerchantOwnershipException exception) {

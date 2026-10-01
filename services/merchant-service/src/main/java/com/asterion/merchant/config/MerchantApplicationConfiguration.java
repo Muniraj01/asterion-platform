@@ -50,6 +50,45 @@ public class MerchantApplicationConfiguration {
     }
 
     @Bean
+    public SuspendMerchantUseCase suspendMerchantUseCase(
+            MerchantRepository merchantRepository,
+            MerchantOutboxRepository merchantOutboxRepository,
+            ObjectMapper objectMapper) {
+
+        return new SuspendMerchantService(
+                merchantRepository,
+                merchantOutboxRepository,
+                objectMapper
+        );
+    }
+
+    @Bean
+    public ReactivateMerchantUseCase reactivateMerchantUseCase(
+            MerchantRepository merchantRepository,
+            MerchantOutboxRepository merchantOutboxRepository,
+            ObjectMapper objectMapper) {
+
+        return new ReactivateMerchantService(
+                merchantRepository,
+                merchantOutboxRepository,
+                objectMapper
+        );
+    }
+
+    @Bean
+    public TerminateMerchantUseCase terminateMerchantUseCase(
+            MerchantRepository merchantRepository,
+            MerchantOutboxRepository merchantOutboxRepository,
+            ObjectMapper objectMapper) {
+
+        return new TerminateMerchantService(
+                merchantRepository,
+                merchantOutboxRepository,
+                objectMapper
+        );
+    }
+
+    @Bean
     public GetMerchantUseCase getMerchantUseCase(
             MerchantRepository merchantRepository) {
 

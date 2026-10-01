@@ -152,4 +152,89 @@ class MerchantTest {
                 "merchant@example.com"
         );
     }
+
+    @Test
+    void shouldUpdateMerchantProfile() {
+        Merchant merchant = createMerchant();
+        merchant.updateProfile("Updated Technologies",
+                "Updated Technologies Private Limited",
+                "updated@example.com"
+        );
+
+        assertThat(merchant.businessName())
+                .isEqualTo("Updated Technologies");
+        assertThat(merchant.legalName())
+                .isEqualTo("Updated Technologies Private Limited");
+        assertThat(merchant.contactEmail())
+                .isEqualTo("updated@example.com");
+    }
+
+    @Test
+    void shouldAllowProfileUpdateForSuspendedMerchant() {
+        Merchant merchant = createMerchant();
+
+        merchant.activate();
+        merchant.suspend();
+
+        merchant.updateProfile("Updated Technologies",
+                "Updated Technologies Private Limited",
+                "updated@example.com"
+        );
+
+        assertThat(merchant.status()).isEqualTo(MerchantStatus.SUSPENDED);
+        assertThat(merchant.businessName()).isEqualTo("Updated Technologies");
+    }
+
+    @Test
+    void shouldNotUpdateTerminatedMerchant() {
+        Merchant merchant = createMerchant();
+
+        merchant.activate();
+        merchant.terminate();
+
+        assertThatThrownBy(() -> merchant
+                .updateProfile("Updated Technologies",
+                        "Updated Technologies Private Limited",
+                        "updated@example.com")
+        )
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("A terminated merchant cannot be updated");
+    }
+
+    @Test
+    void shouldRejectBlankBusinessNameWhenUpdatingProfile() {
+        Merchant merchant = createMerchant();
+
+        assertThatThrownBy(() -> merchant
+                .updateProfile("", "Updated Technologies Private Limited",
+                        "updated@example.com")
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("businessName must not be blank");
+    }
+
+    @Test
+    void shouldRejectBlankLegalNameWhenUpdatingProfile() {
+        Merchant merchant = createMerchant();
+
+        assertThatThrownBy(() -> merchant
+                .updateProfile("Updated Technologies",
+                        "", "updated@example.com")
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("legalName must not be blank");
+    }
+
+    @Test
+    void shouldRejectBlankContactEmailWhenUpdatingProfile() {
+        Merchant merchant = createMerchant();
+
+        assertThatThrownBy(() -> merchant
+                .updateProfile("Updated Technologies",
+                        "Updated Technologies Private Limited", "")
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("contactEmail must not be blank");
+    }
+
 }

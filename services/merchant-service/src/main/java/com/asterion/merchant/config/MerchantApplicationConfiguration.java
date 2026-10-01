@@ -1,17 +1,10 @@
 package com.asterion.merchant.config;
 
-import com.asterion.merchant.application.port.in.ActivateMerchantUseCase;
-import com.asterion.merchant.application.port.in.CreateMerchantUseCase;
-import com.asterion.merchant.application.port.in.GetMerchantUseCase;
-import com.asterion.merchant.application.port.in.ListMerchantsUseCase;
+import com.asterion.merchant.application.port.in.*;
 import com.asterion.merchant.application.port.out.EventPublisher;
 import com.asterion.merchant.application.port.out.MerchantOutboxRepository;
 import com.asterion.merchant.application.port.out.MerchantRepository;
-import com.asterion.merchant.application.service.ActivateMerchantService;
-import com.asterion.merchant.application.service.CreateMerchantService;
-import com.asterion.merchant.application.service.GetMerchantService;
-import com.asterion.merchant.application.service.ListMerchantsService;
-import com.asterion.merchant.application.service.MerchantOutboxPublisher;
+import com.asterion.merchant.application.service.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -37,6 +30,13 @@ public class MerchantApplicationConfiguration {
     }
 
     @Bean
+    public UpdateMerchantUseCase updateMerchantUseCase(
+            MerchantRepository merchantRepository) {
+
+        return new UpdateMerchantService(merchantRepository);
+    }
+
+    @Bean
     public ActivateMerchantUseCase activateMerchantUseCase(
             MerchantRepository merchantRepository,
             MerchantOutboxRepository merchantOutboxRepository,
@@ -50,12 +50,16 @@ public class MerchantApplicationConfiguration {
     }
 
     @Bean
-    public GetMerchantUseCase getMerchantUseCase(MerchantRepository merchantRepository) {
+    public GetMerchantUseCase getMerchantUseCase(
+            MerchantRepository merchantRepository) {
+
         return new GetMerchantService(merchantRepository);
     }
 
     @Bean
-    public ListMerchantsUseCase listMerchantsUseCase(MerchantRepository merchantRepository) {
+    public ListMerchantsUseCase listMerchantsUseCase(
+            MerchantRepository merchantRepository) {
+
         return new ListMerchantsService(merchantRepository);
     }
 

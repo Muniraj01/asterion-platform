@@ -1,12 +1,10 @@
 package com.asterion.merchant.api.controller;
 
 import com.asterion.merchant.application.command.ListMerchantsCommand;
+import com.asterion.merchant.application.command.UpdateMerchantCommand;
 import com.asterion.merchant.application.exception.MerchantOwnershipException;
 import com.asterion.merchant.application.model.MerchantPage;
-import com.asterion.merchant.application.port.in.ActivateMerchantUseCase;
-import com.asterion.merchant.application.port.in.CreateMerchantUseCase;
-import com.asterion.merchant.application.port.in.GetMerchantUseCase;
-import com.asterion.merchant.application.port.in.ListMerchantsUseCase;
+import com.asterion.merchant.application.port.in.*;
 import com.asterion.merchant.domain.model.Merchant;
 import com.asterion.merchant.domain.model.MerchantStatus;
 import com.asterion.merchant.infrastructure.security.MerchantUserIdentity;
@@ -28,6 +26,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class MerchantControllerTest {
@@ -45,6 +44,7 @@ class MerchantControllerTest {
     private ActivateMerchantUseCase activateMerchantUseCase;
     private GetMerchantUseCase getMerchantUseCase;
     private ListMerchantsUseCase listMerchantsUseCase;
+    private UpdateMerchantUseCase updateMerchantUseCase;
 
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
@@ -55,11 +55,12 @@ class MerchantControllerTest {
         activateMerchantUseCase = mock(ActivateMerchantUseCase.class);
         getMerchantUseCase = mock(GetMerchantUseCase.class);
         listMerchantsUseCase = mock(ListMerchantsUseCase.class);
+        updateMerchantUseCase = mock(UpdateMerchantUseCase.class);
 
         objectMapper = new ObjectMapper().findAndRegisterModules();
         MerchantController controller = new MerchantController(
-                createMerchantUseCase, activateMerchantUseCase,
-                getMerchantUseCase, listMerchantsUseCase);
+                createMerchantUseCase, activateMerchantUseCase, getMerchantUseCase,
+                listMerchantsUseCase, updateMerchantUseCase);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -460,6 +461,169 @@ class MerchantControllerTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(listMerchantsUseCase);
+    }
+
+    // -------------------------------------------------------------------------
+    // G5 - Update Merchant
+    // -------------------------------------------------------------------------
+
+    @Test
+    void shouldUpdateMerchantUsingAuthenticatedUserIdentity() throws Exception {
+        Merchant merchant = Merchant.create(
+                USER_ID,
+                "Updated Technologies",
+                "Updated Technologies Private Limited",
+                "updated@example.com"
+        );
+
+        when(updateMerchantUseCase.update(any(UpdateMerchantCommand.class)))
+                .thenReturn(merchant);
+
+        mockMvc.perform(put("/api/v1/merchants/{merchantId}", merchant.id())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "businessName": "Updated Technologies",
+                              "legalName": "Updated Technologies Private Limited",
+                              "contactEmail": "updated@example.com"
+                            }
+                            """)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.merchantId")
+                        .value(merchant.id().toString()))
+                .andExpect(jsonPath("$.businessName")
+                        .value("Updated Technologies"))
+                .andExpect(jsonPath("$.legalName")
+                        .value("Updated Technologies Private Limited"))
+                .andExpect(jsonPath("$.contactEmail")
+                        .value("updated@example.com"));
+
+        ArgumentCaptor<UpdateMerchantCommand> captor =
+                ArgumentCaptor.forClass(UpdateMerchantCommand.class);
+        verify(updateMerchantUseCase).update(captor.capture());
+
+        assertThat(captor.getValue().merchantId()).isEqualTo(merchant.id());
+        assertThat(captor.getValue().authenticatedUserId()).isEqualTo(USER_ID);
+        assertThat(captor.getValue().businessName()).isEqualTo("Updated Technologies");
+    }
+
+    @Test
+    void shouldRejectUpdateWithoutTrustedUserIdentity() throws Exception {
+        mockMvc.perform(put(
+                        "/api/v1/merchants/{merchantId}",
+                        UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                    {
+                      "businessName": "Updated Technologies",
+                      "legalName": "Updated Technologies Private Limited",
+                      "contactEmail": "updated@example.com"
+                    }
+                    """))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(updateMerchantUseCase);
+    }
+
+    @Test
+    void shouldReturnForbiddenWhenUpdatingMerchantNotOwnedByUser() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+        when(updateMerchantUseCase.update(any(UpdateMerchantCommand.class)))
+                .thenThrow(new MerchantOwnershipException(
+                        "Authenticated user does not own merchant: " + merchantId)
+                );
+
+        mockMvc.perform(put("/api/v1/merchants/{merchantId}", merchantId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "businessName": "Updated Technologies",
+                              "legalName": "Updated Technologies Private Limited",
+                              "contactEmail": "updated@example.com"
+                            }
+                            """)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenUpdatingMissingMerchant() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+        when(updateMerchantUseCase.update(any(UpdateMerchantCommand.class)))
+                .thenThrow(new IllegalArgumentException(
+                        "Merchant not found: " + merchantId)
+                );
+
+        mockMvc.perform(put("/api/v1/merchants/{merchantId}", merchantId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "businessName": "Updated Technologies",
+                              "legalName": "Updated Technologies Private Limited",
+                              "contactEmail": "updated@example.com"
+                            }
+                            """)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldReturnConflictWhenUpdatingTerminatedMerchant() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+        when(updateMerchantUseCase.update(any(UpdateMerchantCommand.class)))
+                .thenThrow(new IllegalStateException(
+                        "A terminated merchant cannot be updated")
+                );
+
+        mockMvc.perform(put("/api/v1/merchants/{merchantId}", merchantId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "businessName": "Updated Technologies",
+                              "legalName": "Updated Technologies Private Limited",
+                              "contactEmail": "updated@example.com"
+                            }
+                            """)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldRejectInvalidUpdateRequest() throws Exception {
+        mockMvc.perform(put("/api/v1/merchants/{merchantId}", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                    {
+                      "businessName": "",
+                      "legalName": "",
+                      "contactEmail": "not-an-email"
+                    }
+                    """)
+                        .requestAttr(MerchantUserIdentity.class.getName(),
+                                new MerchantUserIdentity(
+                                        USER_ID, "owner@example.com", "USER")
+                        )
+                )
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(updateMerchantUseCase);
     }
 
 }

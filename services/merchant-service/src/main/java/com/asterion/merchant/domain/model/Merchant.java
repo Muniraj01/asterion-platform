@@ -9,9 +9,9 @@ public class Merchant {
 
     private final UUID merchantId;
     private final UUID ownerUserId;
-    private final String businessName;
-    private final String legalName;
-    private final String contactEmail;
+    private String businessName;
+    private String legalName;
+    private String contactEmail;
     private final Instant createdAt;
     private MerchantStatus status;
 
@@ -47,6 +47,15 @@ public class Merchant {
                                         Instant createdAt) {
         return new Merchant(merchantId, ownerUserId, businessName,
                 legalName, contactEmail, status, createdAt);
+    }
+
+    public void updateProfile(String businessName, String legalName, String contactEmail) {
+        if (status == MerchantStatus.TERMINATED)
+            throw new IllegalStateException("A terminated merchant cannot be updated");
+
+        this.businessName = requireText(businessName, "businessName");
+        this.legalName = requireText(legalName, "legalName");
+        this.contactEmail = requireText(contactEmail, "contactEmail");
     }
 
     public void activate() {

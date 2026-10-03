@@ -8,6 +8,7 @@ public record OrderCreatedEvent(
         UUID eventId,
         Instant occurredAt,
         UUID orderId,
+        UUID merchantId,
         UUID customerId,
         BigDecimal totalAmount
 ) implements DomainEvent {

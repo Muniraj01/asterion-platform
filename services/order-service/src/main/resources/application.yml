@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: order-service
+
+  datasource:
+    url: ${ORDER_DATASOURCE_URL:jdbc:postgresql://localhost:55433/asterion_auth}
+    username: ${ORDER_DATASOURCE_USERNAME:asterion}
+    password: ${ORDER_DATASOURCE_PASSWORD:asterion}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      retries: ${KAFKA_PRODUCER_RETRIES:3}
+      properties:
+        request.timeout.ms: ${KAFKA_PRODUCER_REQUEST_TIMEOUT_MS:5000}
+        delivery.timeout.ms: ${KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS:10000}
+
+server:
+  port: ${SERVER_PORT:8083}
+
+asterion:
+  security:
+    internal:
+      service-name: ${ASTERION_SERVICE_NAME:api-gateway}
+      service-token: ${ASTERION_SERVICE_TOKEN:change-me-internal-service-token}
+
+  order:
+    kafka:
+      topic: ${ASTERION_ORDER_KAFKA_TOPIC:order.events}
+
+    outbox:
+      poll-interval-ms: ${ASTERION_ORDER_OUTBOX_POLL_INTERVAL_MS:1000}
+      batch-size: ${ASTERION_ORDER_OUTBOX_BATCH_SIZE:100}
+      claim-lease-seconds: ${ASTERION_ORDER_OUTBOX_CLAIM_LEASE_SECONDS:60}

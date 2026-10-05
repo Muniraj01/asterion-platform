@@ -3,6 +3,9 @@ package com.asterion.order.api.controller;
 import com.asterion.order.api.request.CreateOrderRequest;
 import com.asterion.order.api.response.OrderResponse;
 import com.asterion.order.application.command.CreateOrderCommand;
+import com.asterion.order.application.exception.MerchantNotActiveException;
+import com.asterion.order.application.exception.MerchantNotFoundException;
+import com.asterion.order.application.exception.MerchantServiceException;
 import com.asterion.order.application.port.in.CreateOrderUseCase;
 import com.asterion.order.domain.model.Order;
 import com.asterion.order.infrastructure.security.OrderUserIdentity;
@@ -33,16 +36,25 @@ public class OrderController {
         if (identity == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 
-        Order order = createOrderUseCase.create(
-                new CreateOrderCommand(
-                        request.merchantId(),
-                        identity.userId(),
-                        request.totalAmount()
-                )
-        );
+        try {
+            Order order = createOrderUseCase.create(
+                    new CreateOrderCommand(
+                            request.merchantId(), identity.userId(), request.totalAmount()
+                    )
+            );
 
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(OrderResponse.from(order));
+            return ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(OrderResponse.from(order));
+
+        } catch (MerchantNotFoundException exception) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+
+        } catch (MerchantNotActiveException exception) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+
+        } catch (MerchantServiceException exception) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
+        }
     }
 }

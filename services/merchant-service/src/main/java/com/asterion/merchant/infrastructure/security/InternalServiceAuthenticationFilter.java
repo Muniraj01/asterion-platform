@@ -19,17 +19,29 @@ public class InternalServiceAuthenticationFilter extends OncePerRequestFilter {
     private static final String USER_ID_HEADER = "X-User-Id";
     private static final String USER_EMAIL_HEADER = "X-User-Email";
     private static final String USER_ROLES_HEADER = "X-User-Roles";
+    private static final String PUBLIC_MERCHANT_PREFIX = "/api/v1/merchants";
+    private static final String INTERNAL_MERCHANT_PREFIX = "/internal/api/v1/merchants";
 
-    private final String expectedServiceName;
-    private final String expectedServiceToken;
+    private final String gatewayServiceName;
+    private final String gatewayServiceToken;
+
+    private final String orderServiceName;
+    private final String orderServiceToken;
 
     public InternalServiceAuthenticationFilter(
-            @Value("${asterion.security.internal.service-name}")
-            String expectedServiceName,
-            @Value("${asterion.security.internal.service-token}")
-            String expectedServiceToken) {
-        this.expectedServiceName = expectedServiceName;
-        this.expectedServiceToken = expectedServiceToken;
+            @Value("${asterion.security.internal.gateway.service-name}")
+            String gatewayServiceName,
+            @Value("${asterion.security.internal.gateway.service-token}")
+            String gatewayServiceToken,
+            @Value("${asterion.security.internal.order.service-name}")
+            String orderServiceName,
+            @Value("${asterion.security.internal.order.service-token}")
+            String orderServiceToken) {
+
+        this.gatewayServiceName = gatewayServiceName;
+        this.gatewayServiceToken = gatewayServiceToken;
+        this.orderServiceName = orderServiceName;
+        this.orderServiceToken = orderServiceToken;
     }
 
     @Override
@@ -40,9 +52,20 @@ public class InternalServiceAuthenticationFilter extends OncePerRequestFilter {
 
         String serviceName = request.getHeader(SERVICE_NAME_HEADER);
         String serviceToken = request.getHeader(SERVICE_TOKEN_HEADER);
+        String requestUri = request.getRequestURI();
 
-        if (!expectedServiceName.equals(serviceName)
-                || !expectedServiceToken.equals(serviceToken)) {
+        // Internal Merchant API
+        if (isInternalMerchantRequest(requestUri)) {
+            if (!matches(orderServiceName, orderServiceToken, serviceName, serviceToken)) {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                return;
+            }
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // Public Merchant API
+        if (!matches(gatewayServiceName, gatewayServiceToken, serviceName, serviceToken)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             return;
         }
@@ -66,16 +89,35 @@ public class InternalServiceAuthenticationFilter extends OncePerRequestFilter {
                 request.getHeader(USER_EMAIL_HEADER),
                 request.getHeader(USER_ROLES_HEADER)
         );
-        request.setAttribute(MerchantUserIdentity.class.getName(), identity);
 
+        request.setAttribute(MerchantUserIdentity.class.getName(), identity);
         filterChain.doFilter(request, response);
+    }
+
+    private boolean matches(
+            String expectedServiceName,
+            String expectedServiceToken,
+            String actualServiceName,
+            String actualServiceToken) {
+
+        return expectedServiceName.equals(actualServiceName)
+                && expectedServiceToken.equals(actualServiceToken);
+    }
+
+    private boolean isInternalMerchantRequest(String requestUri) {
+        return requestUri != null
+                && (requestUri.equals(INTERNAL_MERCHANT_PREFIX)
+                || requestUri.startsWith(INTERNAL_MERCHANT_PREFIX + "/"));
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String requestUri = request.getRequestURI();
-        return requestUri == null
-                || !(requestUri.equals("/api/v1/merchants")
-                || requestUri.startsWith("/api/v1/merchants/"));
+        return requestUri == null ||
+                !(requestUri.equals(PUBLIC_MERCHANT_PREFIX)
+                        || requestUri.startsWith(PUBLIC_MERCHANT_PREFIX + "/")
+                        || requestUri.equals(INTERNAL_MERCHANT_PREFIX)
+                        || requestUri.startsWith(INTERNAL_MERCHANT_PREFIX + "/")
+                );
     }
 }

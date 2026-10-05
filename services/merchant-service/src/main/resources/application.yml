@@ -16,8 +16,13 @@ server:
 asterion:
   security:
     internal:
-      service-name: ${ASTERION_SERVICE_NAME:api-gateway}
-      service-token: ${ASTERION_SERVICE_TOKEN:change-me-internal-service-token}
+      gateway:
+        service-name: ${ASTERION_GATEWAY_SERVICE_NAME:api-gateway}
+        service-token: ${ASTERION_GATEWAY_SERVICE_TOKEN:change-me-internal-service-token}
+
+      order:
+        service-name: ${ASTERION_ORDER_SERVICE_NAME:order-service}
+        service-token: ${ASTERION_ORDER_SERVICE_TOKEN:change-me-order-service-token}
 
   merchant:
     kafka:

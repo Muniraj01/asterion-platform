@@ -1,9 +1,11 @@
 package com.asterion.order.api.controller;
 
+import com.asterion.order.application.exception.MerchantNotActiveException;
+import com.asterion.order.application.exception.MerchantNotFoundException;
+import com.asterion.order.application.exception.MerchantServiceException;
 import com.asterion.order.application.port.in.CreateOrderUseCase;
 import com.asterion.order.domain.model.Order;
 import com.asterion.order.infrastructure.security.OrderUserIdentity;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -27,12 +29,10 @@ class OrderControllerTest {
 
     private CreateOrderUseCase createOrderUseCase;
     private MockMvc mockMvc;
-    private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() {
         createOrderUseCase = mock(CreateOrderUseCase.class);
-        objectMapper = new ObjectMapper().findAndRegisterModules();
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new OrderController(createOrderUseCase))
                 .build();
@@ -40,9 +40,7 @@ class OrderControllerTest {
 
     @Test
     void shouldCreateOrderUsingTrustedUserIdentity() throws Exception {
-        Order order = Order.create(
-                MERCHANT_ID, USER_ID, new BigDecimal("125.50")
-        );
+        Order order = Order.create(MERCHANT_ID, USER_ID, new BigDecimal("125.50"));
 
         when(createOrderUseCase.create(any())).thenReturn(order);
 
@@ -50,8 +48,7 @@ class OrderControllerTest {
                         .contentType("application/json")
                         .requestAttr(OrderUserIdentity.class.getName(),
                                 new OrderUserIdentity(
-                                        USER_ID, "customer@example.com", "USER")
-                        )
+                                        USER_ID, "customer@example.com", "USER"))
                         .content(
                                 """
                                 {
@@ -60,8 +57,7 @@ class OrderControllerTest {
                                   "totalAmount": 125.50
                                 }
                                 """
-                        )
-                )
+                        ))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.orderId").exists())
                 .andExpect(jsonPath("$.merchantId").value(MERCHANT_ID.toString()))
@@ -73,7 +69,7 @@ class OrderControllerTest {
     }
 
     @Test
-    void shouldRejectRequestWithoutTrustedUserIdentity() throws Exception {
+    void shouldRejectMissingTrustedUserIdentity() throws Exception {
         mockMvc.perform(post("/api/v1/orders")
                         .contentType("application/json")
                         .content(
@@ -84,8 +80,7 @@ class OrderControllerTest {
                                   "totalAmount": 125.50
                                 }
                                 """
-                        )
-                )
+                        ))
                 .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(createOrderUseCase);
@@ -97,17 +92,14 @@ class OrderControllerTest {
                         .contentType("application/json")
                         .requestAttr(OrderUserIdentity.class.getName(),
                                 new OrderUserIdentity(
-                                        USER_ID, "customer@example.com", "USER"
-                                )
-                        )
+                                        USER_ID, "customer@example.com", "USER"))
                         .content(
                                 """
                                 {
                                   "totalAmount": 125.50
                                 }
                                 """
-                        )
-                )
+                        ))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(createOrderUseCase);
@@ -119,9 +111,7 @@ class OrderControllerTest {
                         .contentType("application/json")
                         .requestAttr(OrderUserIdentity.class.getName(),
                                 new OrderUserIdentity(
-                                        USER_ID, "customer@example.com", "USER"
-                                )
-                        )
+                                        USER_ID, "customer@example.com", "USER"))
                         .content(
                                 """
                                 {
@@ -129,18 +119,16 @@ class OrderControllerTest {
                                     "22222222-2222-2222-2222-222222222222"
                                 }
                                 """
-                        )
-                )
+                        ))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(createOrderUseCase);
     }
 
     @Test
-    void shouldNotAcceptCustomerIdFromRequest() throws Exception {
-        Order order = Order.create(
-                MERCHANT_ID, USER_ID, new BigDecimal("100.00")
-        );
+    void shouldIgnoreCustomerIdSuppliedByClient() throws Exception {
+
+        Order order = Order.create(MERCHANT_ID, USER_ID, new BigDecimal("100.00"));
 
         when(createOrderUseCase.create(any())).thenReturn(order);
 
@@ -148,9 +136,7 @@ class OrderControllerTest {
                         .contentType("application/json")
                         .requestAttr(OrderUserIdentity.class.getName(),
                                 new OrderUserIdentity(
-                                        USER_ID, "customer@example.com", "USER"
-                                )
-                        )
+                                        USER_ID, "customer@example.com", "USER"))
                         .content(
                                 """
                                 {
@@ -161,10 +147,75 @@ class OrderControllerTest {
                                   "totalAmount": 100.00
                                 }
                                 """
-                        )
-                )
+                        ))
                 .andExpect(status().isCreated());
 
         verify(createOrderUseCase).create(any());
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenMerchantDoesNotExist() throws Exception {
+        when(createOrderUseCase.create(any()))
+                .thenThrow(new MerchantNotFoundException(MERCHANT_ID));
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType("application/json")
+                        .requestAttr(OrderUserIdentity.class.getName(),
+                                new OrderUserIdentity(
+                                        USER_ID, "customer@example.com", "USER"))
+                        .content(
+                                """
+                                {
+                                  "merchantId":
+                                    "22222222-2222-2222-2222-222222222222",
+                                  "totalAmount": 125.50
+                                }
+                                """
+                        ))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldReturnConflictWhenMerchantIsNotActive() throws Exception {
+        when(createOrderUseCase.create(any()))
+                .thenThrow(new MerchantNotActiveException(MERCHANT_ID, "SUSPENDED"));
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType("application/json")
+                        .requestAttr(OrderUserIdentity.class.getName(),
+                                new OrderUserIdentity(
+                                        USER_ID, "customer@example.com", "USER"))
+                        .content(
+                                """
+                                {
+                                  "merchantId":
+                                    "22222222-2222-2222-2222-222222222222",
+                                  "totalAmount": 125.50
+                                }
+                                """
+                        ))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldReturnBadGatewayWhenMerchantServiceFails() throws Exception {
+        when(createOrderUseCase.create(any()))
+                .thenThrow(new MerchantServiceException("Merchant Service is unavailable"));
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType("application/json")
+                        .requestAttr(OrderUserIdentity.class.getName(),
+                                new OrderUserIdentity(
+                                        USER_ID, "customer@example.com", "USER"))
+                        .content(
+                                """
+                                {
+                                  "merchantId":
+                                    "22222222-2222-2222-2222-222222222222",
+                                  "totalAmount": 125.50
+                                }
+                                """
+                        ))
+                .andExpect(status().isBadGateway());
     }
 }

@@ -2,6 +2,7 @@ package com.asterion.order.config;
 
 import com.asterion.order.application.port.in.CreateOrderUseCase;
 import com.asterion.order.application.port.out.EventPublisher;
+import com.asterion.order.application.port.out.MerchantValidationPort;
 import com.asterion.order.application.port.out.OrderOutboxRepository;
 import com.asterion.order.application.port.out.OrderRepository;
 import com.asterion.order.application.service.CreateOrderService;
@@ -20,12 +21,14 @@ import java.time.Duration;
 public class OrderApplicationConfiguration {
 
     @Bean
-    public CreateOrderUseCase createOrderUseCase(
+    CreateOrderUseCase createOrderUseCase(
+            MerchantValidationPort merchantValidationPort,
             OrderRepository orderRepository,
             OrderOutboxRepository orderOutboxRepository,
             ObjectMapper objectMapper) {
 
         return new CreateOrderService(
+                merchantValidationPort,
                 orderRepository,
                 orderOutboxRepository,
                 objectMapper

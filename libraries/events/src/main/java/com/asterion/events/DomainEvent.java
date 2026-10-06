@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 public sealed interface DomainEvent
-        permits OrderCreatedEvent {
+        permits OrderCreatedEvent, PaymentInitiationRequestedEvent {
 
     UUID eventId();
 

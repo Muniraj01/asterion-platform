@@ -6,9 +6,11 @@ import com.asterion.order.application.exception.MerchantNotFoundException;
 import com.asterion.order.application.exception.MerchantServiceException;
 import com.asterion.order.application.model.MerchantValidationResult;
 import com.asterion.order.application.model.OrderOutboxEvent;
+import com.asterion.order.application.model.PaymentInitiation;
 import com.asterion.order.application.port.out.MerchantValidationPort;
 import com.asterion.order.application.port.out.OrderOutboxRepository;
 import com.asterion.order.application.port.out.OrderRepository;
+import com.asterion.order.application.port.out.PaymentInitiationPort;
 import com.asterion.order.domain.model.Order;
 import com.asterion.order.domain.model.OrderStatus;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -35,6 +37,7 @@ class CreateOrderServiceTest {
     private MerchantValidationPort merchantValidationPort;
     private OrderRepository orderRepository;
     private OrderOutboxRepository orderOutboxRepository;
+    private PaymentInitiationPort paymentInitiationPort;
     private ObjectMapper objectMapper;
     private CreateOrderService service;
 
@@ -43,11 +46,14 @@ class CreateOrderServiceTest {
         merchantValidationPort = mock(MerchantValidationPort.class);
         orderRepository = mock(OrderRepository.class);
         orderOutboxRepository = mock(OrderOutboxRepository.class);
+        paymentInitiationPort = mock(PaymentInitiationPort.class);
         objectMapper = mock(ObjectMapper.class);
+
         service = new CreateOrderService(
                 merchantValidationPort,
                 orderRepository,
                 orderOutboxRepository,
+                paymentInitiationPort,
                 objectMapper
         );
     }
@@ -65,8 +71,7 @@ class CreateOrderServiceTest {
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
 
         Order result = service.create(new CreateOrderCommand(
-                MERCHANT_ID, CUSTOMER_ID, new BigDecimal("100.00"))
-        );
+                MERCHANT_ID, CUSTOMER_ID, new BigDecimal("100.00")));
 
         assertNotNull(result);
         assertEquals(savedOrder.id(), result.id());
@@ -75,11 +80,11 @@ class CreateOrderServiceTest {
         verify(merchantValidationPort).validate(MERCHANT_ID);
         verify(orderRepository).save(any(Order.class));
         verify(orderOutboxRepository).save(any(OrderOutboxEvent.class));
+        verify(paymentInitiationPort).initiate(any(PaymentInitiation.class));
     }
 
     @Test
     void shouldValidateMerchantBeforePersistingOrder() throws Exception {
-
         when(merchantValidationPort.validate(MERCHANT_ID))
                 .thenReturn(new MerchantValidationResult(MERCHANT_ID, "ACTIVE"));
 
@@ -89,10 +94,10 @@ class CreateOrderServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         service.create(new CreateOrderCommand(
-                MERCHANT_ID, CUSTOMER_ID, new BigDecimal("100.00"))
-        );
+                MERCHANT_ID, CUSTOMER_ID, new BigDecimal("100.00")));
 
         var inOrder = inOrder(merchantValidationPort, orderRepository);
+
         inOrder.verify(merchantValidationPort).validate(MERCHANT_ID);
         inOrder.verify(orderRepository).save(any(Order.class));
     }
@@ -109,10 +114,7 @@ class CreateOrderServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         service.create(new CreateOrderCommand(
-                MERCHANT_ID,
-                CUSTOMER_ID,
-                new BigDecimal("250.75")
-        ));
+                MERCHANT_ID, CUSTOMER_ID, new BigDecimal("250.75")));
 
         ArgumentCaptor<OrderOutboxEvent> captor =
                 ArgumentCaptor.forClass(OrderOutboxEvent.class);
@@ -130,6 +132,51 @@ class CreateOrderServiceTest {
     }
 
     @Test
+    void shouldInitiatePaymentForCreatedOrder() throws Exception {
+        when(merchantValidationPort.validate(MERCHANT_ID))
+                .thenReturn(new MerchantValidationResult(MERCHANT_ID, "ACTIVE"));
+
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+
+        when(orderRepository.save(any(Order.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.create(new CreateOrderCommand(
+                MERCHANT_ID, CUSTOMER_ID, new BigDecimal("250.75")));
+
+        ArgumentCaptor<PaymentInitiation> captor =
+                ArgumentCaptor.forClass(PaymentInitiation.class);
+        verify(paymentInitiationPort).initiate(captor.capture());
+
+        PaymentInitiation paymentInitiation = captor.getValue();
+
+        assertNotNull(paymentInitiation.orderId());
+        assertEquals(MERCHANT_ID, paymentInitiation.merchantId());
+        assertEquals(CUSTOMER_ID, paymentInitiation.customerId());
+        assertEquals(new BigDecimal("250.75"), paymentInitiation.totalAmount());
+    }
+
+    @Test
+    void shouldInitiatePaymentAfterOrderOutboxEvent() throws Exception {
+        when(merchantValidationPort.validate(MERCHANT_ID))
+                .thenReturn(new MerchantValidationResult(MERCHANT_ID, "ACTIVE"));
+
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+
+        when(orderRepository.save(any(Order.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.create(new CreateOrderCommand(
+                MERCHANT_ID, CUSTOMER_ID, new BigDecimal("100.00")));
+
+        var inOrder = inOrder(orderRepository, orderOutboxRepository, paymentInitiationPort);
+
+        inOrder.verify(orderRepository).save(any(Order.class));
+        inOrder.verify(orderOutboxRepository).save(any(OrderOutboxEvent.class));
+        inOrder.verify(paymentInitiationPort).initiate(any(PaymentInitiation.class));
+    }
+
+    @Test
     void shouldRejectNullCommand() {
         assertThrows(IllegalArgumentException.class, () -> service.create(null));
 
@@ -137,7 +184,9 @@ class CreateOrderServiceTest {
                 merchantValidationPort,
                 orderRepository,
                 orderOutboxRepository,
-                objectMapper);
+                paymentInitiationPort,
+                objectMapper
+        );
     }
 
     @Test
@@ -151,7 +200,9 @@ class CreateOrderServiceTest {
                 merchantValidationPort,
                 orderRepository,
                 orderOutboxRepository,
-                objectMapper);
+                paymentInitiationPort,
+                objectMapper
+        );
     }
 
     @Test
@@ -165,7 +216,9 @@ class CreateOrderServiceTest {
                 merchantValidationPort,
                 orderRepository,
                 orderOutboxRepository,
-                objectMapper);
+                paymentInitiationPort,
+                objectMapper
+        );
     }
 
     @Test
@@ -179,7 +232,9 @@ class CreateOrderServiceTest {
                 merchantValidationPort,
                 orderRepository,
                 orderOutboxRepository,
-                objectMapper);
+                paymentInitiationPort,
+                objectMapper
+        );
     }
 
     @Test
@@ -189,7 +244,7 @@ class CreateOrderServiceTest {
 
         assertThrows(MerchantNotActiveException.class,
                 () -> service.create(new CreateOrderCommand(
-                        MERCHANT_ID,CUSTOMER_ID, new BigDecimal("100.00")))
+                        MERCHANT_ID, CUSTOMER_ID, new BigDecimal("100.00")))
         );
 
         verify(merchantValidationPort).validate(MERCHANT_ID);
@@ -197,7 +252,9 @@ class CreateOrderServiceTest {
         verifyNoInteractions(
                 orderRepository,
                 orderOutboxRepository,
-                objectMapper);
+                paymentInitiationPort,
+                objectMapper
+        );
     }
 
     @Test
@@ -213,7 +270,9 @@ class CreateOrderServiceTest {
         verifyNoInteractions(
                 orderRepository,
                 orderOutboxRepository,
-                objectMapper);
+                paymentInitiationPort,
+                objectMapper
+        );
     }
 
     @Test
@@ -229,7 +288,9 @@ class CreateOrderServiceTest {
         verifyNoInteractions(
                 orderRepository,
                 orderOutboxRepository,
-                objectMapper);
+                paymentInitiationPort,
+                objectMapper
+        );
     }
 
     @Test
@@ -245,14 +306,15 @@ class CreateOrderServiceTest {
         verifyNoInteractions(
                 orderRepository,
                 orderOutboxRepository,
-                objectMapper);
+                paymentInitiationPort,
+                objectMapper
+        );
     }
 
     @Test
     void shouldNotPersistWhenMerchantServiceFails() {
         when(merchantValidationPort.validate(MERCHANT_ID))
-                .thenThrow(new MerchantServiceException(
-                                "Merchant Service is unavailable"));
+                .thenThrow(new MerchantServiceException("Merchant Service is unavailable"));
 
         assertThrows(MerchantServiceException.class,
                 () -> service.create(new CreateOrderCommand(
@@ -262,7 +324,9 @@ class CreateOrderServiceTest {
         verifyNoInteractions(
                 orderRepository,
                 orderOutboxRepository,
-                objectMapper);
+                paymentInitiationPort,
+                objectMapper
+        );
     }
 
     @Test
@@ -282,7 +346,8 @@ class CreateOrderServiceTest {
         );
 
         verify(orderRepository).save(any(Order.class));
-        verifyNoInteractions(orderOutboxRepository);
+
+        verifyNoInteractions(orderOutboxRepository, paymentInitiationPort);
     }
 
     @Test
@@ -298,6 +363,6 @@ class CreateOrderServiceTest {
                         MERCHANT_ID, CUSTOMER_ID, new BigDecimal("10.00")))
         );
 
-        verifyNoInteractions(orderRepository, orderOutboxRepository);
+        verifyNoInteractions(orderRepository, orderOutboxRepository, paymentInitiationPort);
     }
 }

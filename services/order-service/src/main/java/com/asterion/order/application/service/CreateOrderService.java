@@ -5,16 +5,17 @@ import com.asterion.order.application.command.CreateOrderCommand;
 import com.asterion.order.application.exception.MerchantNotActiveException;
 import com.asterion.order.application.model.MerchantValidationResult;
 import com.asterion.order.application.model.OrderOutboxEvent;
+import com.asterion.order.application.model.PaymentInitiation;
 import com.asterion.order.application.port.in.CreateOrderUseCase;
 import com.asterion.order.application.port.out.MerchantValidationPort;
 import com.asterion.order.application.port.out.OrderOutboxRepository;
 import com.asterion.order.application.port.out.OrderRepository;
+import com.asterion.order.application.port.out.PaymentInitiationPort;
 import com.asterion.order.domain.model.Order;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -23,17 +24,20 @@ public class CreateOrderService implements CreateOrderUseCase {
     private final MerchantValidationPort merchantValidationPort;
     private final OrderRepository orderRepository;
     private final OrderOutboxRepository orderOutboxRepository;
+    private final PaymentInitiationPort paymentInitiationPort;
     private final ObjectMapper objectMapper;
 
     public CreateOrderService(
             MerchantValidationPort merchantValidationPort,
             OrderRepository orderRepository,
             OrderOutboxRepository orderOutboxRepository,
+            PaymentInitiationPort paymentInitiationPort,
             ObjectMapper objectMapper) {
 
         this.merchantValidationPort = merchantValidationPort;
         this.orderRepository = orderRepository;
         this.orderOutboxRepository = orderOutboxRepository;
+        this.paymentInitiationPort = paymentInitiationPort;
         this.objectMapper = objectMapper;
     }
 
@@ -41,6 +45,7 @@ public class CreateOrderService implements CreateOrderUseCase {
     @Transactional
     public Order create(CreateOrderCommand command) {
         validate(command);
+
         MerchantValidationResult merchant =
                 merchantValidationPort.validate(command.merchantId());
 
@@ -63,6 +68,7 @@ public class CreateOrderService implements CreateOrderUseCase {
         );
 
         String payload = serialize(event);
+
         OrderOutboxEvent outboxEvent = new OrderOutboxEvent(
                 event.eventId(),
                 order.id(),
@@ -75,6 +81,16 @@ public class CreateOrderService implements CreateOrderUseCase {
 
         Order savedOrder = orderRepository.save(order);
         orderOutboxRepository.save(outboxEvent);
+
+        paymentInitiationPort.initiate(
+                new PaymentInitiation(
+                        order.id(),
+                        order.merchantId(),
+                        order.customerId(),
+                        order.totalAmount()
+                )
+        );
+
         return savedOrder;
     }
 
@@ -97,7 +113,8 @@ public class CreateOrderService implements CreateOrderUseCase {
             return objectMapper.writeValueAsString(event);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException(
-                    "Failed to serialize OrderCreatedEvent", exception);
+                    "Failed to serialize OrderCreatedEvent", exception
+            );
         }
     }
 }

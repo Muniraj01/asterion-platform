@@ -1,5 +1,7 @@
 package com.asterion.order.domain.model;
 
+import com.asterion.order.application.exception.InvalidOrderStateTransitionException;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -23,9 +25,12 @@ public class Order {
             OrderStatus status,
             Instant createdAt) {
 
-        this.orderId = Objects.requireNonNull(orderId, "orderId must not be null");
-        this.merchantId = Objects.requireNonNull(merchantId, "merchantId must not be null");
-        this.customerId = Objects.requireNonNull(customerId, "customerId must not be null");
+        this.orderId = Objects.requireNonNull(orderId,
+                "orderId must not be null");
+        this.merchantId = Objects.requireNonNull(merchantId,
+                "merchantId must not be null");
+        this.customerId = Objects.requireNonNull(customerId,
+                "customerId must not be null");
 
         if (totalAmount == null)
             throw new IllegalArgumentException("totalAmount must not be null");
@@ -35,7 +40,8 @@ public class Order {
 
         this.totalAmount = totalAmount;
         this.status = Objects.requireNonNull(status, "status must not be null");
-        this.createdAt = Objects.requireNonNull(createdAt, "createdAt must not be null");
+        this.createdAt = Objects.requireNonNull(createdAt,
+                "createdAt must not be null");
     }
 
     public static Order create(
@@ -69,6 +75,23 @@ public class Order {
                 status,
                 createdAt
         );
+    }
+
+    public void cancel() {
+        transitionTo(OrderStatus.CANCELLED);
+    }
+
+    public void complete() {
+        transitionTo(OrderStatus.COMPLETED);
+    }
+
+    private void transitionTo(OrderStatus targetStatus) {
+        Objects.requireNonNull(targetStatus, "targetStatus must not be null");
+
+        if (status != OrderStatus.CREATED)
+            throw new InvalidOrderStateTransitionException(status, targetStatus);
+
+        status = targetStatus;
     }
 
     public UUID id() {

@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 @Testcontainers
@@ -64,5 +65,35 @@ class OrderPersistenceIntegrationTest {
         assertEquals(merchantId, loaded.get().getMerchantId());
         assertEquals(customerId, loaded.get().getCustomerId());
         assertEquals(new BigDecimal("125.50"), loaded.get().getTotalAmount());
+    }
+
+    @Test
+    void shouldTransitionStatusOnlyWhenExpectedStatusMatches() {
+        UUID orderId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
+        OrderJpaEntity entity = new OrderJpaEntity(
+                orderId,
+                merchantId,
+                customerId,
+                new BigDecimal("100.00"),
+                OrderStatus.CREATED,
+                Instant.now());
+        repository.saveAndFlush(entity);
+
+        int transitioned = repository
+                .transitionStatus(orderId, OrderStatus.CREATED, OrderStatus.CANCELLED);
+        assertThat(transitioned).isEqualTo(1);
+
+        OrderJpaEntity updated = repository.findById(orderId).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+
+        int secondTransition = repository
+                .transitionStatus(orderId, OrderStatus.CREATED, OrderStatus.COMPLETED);
+        assertThat(secondTransition).isEqualTo(0);
+
+        OrderJpaEntity finalEntity = repository.findById(orderId).orElseThrow();
+        assertThat(finalEntity.getStatus()).isEqualTo(OrderStatus.CANCELLED);
     }
 }

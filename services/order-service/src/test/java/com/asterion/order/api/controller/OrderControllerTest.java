@@ -1,25 +1,30 @@
 package com.asterion.order.api.controller;
 
-import com.asterion.order.api.response.OrderPageResponse;
+import com.asterion.order.api.response.OrderResponse;
 import com.asterion.order.application.command.GetOrderCommand;
 import com.asterion.order.application.command.ListOrdersCommand;
-import com.asterion.order.application.exception.MerchantNotActiveException;
-import com.asterion.order.application.exception.MerchantNotFoundException;
-import com.asterion.order.application.exception.MerchantServiceException;
-import com.asterion.order.application.exception.OrderOwnershipException;
+import com.asterion.order.application.command.TransitionOrderCommand;
+import com.asterion.order.application.exception.*;
 import com.asterion.order.application.model.OrderPage;
 import com.asterion.order.application.port.in.CreateOrderUseCase;
 import com.asterion.order.application.port.in.GetOrderUseCase;
 import com.asterion.order.application.port.in.ListOrdersUseCase;
+import com.asterion.order.application.port.in.TransitionOrderUseCase;
 import com.asterion.order.domain.model.Order;
+import com.asterion.order.domain.model.OrderStatus;
 import com.asterion.order.infrastructure.security.OrderUserIdentity;
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,19 +48,30 @@ class OrderControllerTest {
     private CreateOrderUseCase createOrderUseCase;
     private GetOrderUseCase getOrderUseCase;
     private ListOrdersUseCase listOrdersUseCase;
+    private TransitionOrderUseCase transitionOrderUseCase;
     private MockMvc mockMvc;
+    private OrderController controller;
+    private HttpServletRequest request;
 
     @BeforeEach
     void setUp() {
-
         createOrderUseCase = mock(CreateOrderUseCase.class);
         getOrderUseCase = mock(GetOrderUseCase.class);
         listOrdersUseCase = mock(ListOrdersUseCase.class);
+        transitionOrderUseCase = mock(TransitionOrderUseCase.class);
+        request = mock(HttpServletRequest.class);
+
+        controller = new OrderController(
+                createOrderUseCase,
+                getOrderUseCase,
+                listOrdersUseCase,
+                transitionOrderUseCase);
 
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new OrderController(
-                        createOrderUseCase, getOrderUseCase, listOrdersUseCase))
+                .standaloneSetup(controller)
                 .build();
+
+
     }
 
     // -------------------------------------------------------------------------
@@ -398,5 +414,120 @@ class OrderControllerTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(listOrdersUseCase);
+    }
+
+    @Test
+    void shouldCancelOrder() {
+        UUID orderId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
+        Order order = Order.reconstitute(
+                orderId,
+                UUID.randomUUID(),
+                customerId,
+                new BigDecimal("100.00"),
+                OrderStatus.CANCELLED,
+                Instant.now());
+
+        when(request.getAttribute(OrderUserIdentity.class.getName()))
+                .thenReturn(new OrderUserIdentity(
+                        customerId, "customer@example.com", "CUSTOMER"));
+
+        when(transitionOrderUseCase.transition(any(TransitionOrderCommand.class)))
+                .thenReturn(order);
+
+        ResponseEntity<OrderResponse> response = controller.cancelOrder(orderId, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().status()).isEqualTo("CANCELLED");
+    }
+
+    @Test
+    void shouldCompleteOrder() {
+        UUID orderId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
+        Order order = Order.reconstitute(
+                orderId,
+                UUID.randomUUID(),
+                customerId,
+                new BigDecimal("100.00"),
+                OrderStatus.COMPLETED,
+                Instant.now());
+
+        when(request.getAttribute(OrderUserIdentity.class.getName()))
+                .thenReturn(new OrderUserIdentity(
+                        customerId, "customer@example.com", "CUSTOMER"));
+
+        when(transitionOrderUseCase.transition(any(TransitionOrderCommand.class)))
+                .thenReturn(order);
+
+        ResponseEntity<OrderResponse> response = controller.completeOrder(orderId, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().status()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void shouldReturnUnauthorizedWhenCancellingWithoutIdentity() {
+        UUID orderId = UUID.randomUUID();
+        when(request.getAttribute(OrderUserIdentity.class.getName()))
+                .thenReturn(null);
+
+        ResponseEntity<OrderResponse> response = controller.cancelOrder(orderId, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verifyNoInteractions(transitionOrderUseCase);
+    }
+
+    @Test
+    void shouldReturnForbiddenWhenCustomerDoesNotOwnOrder() {
+        UUID orderId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
+        when(request.getAttribute(OrderUserIdentity.class.getName()))
+                .thenReturn(new OrderUserIdentity(
+                        customerId, "customer@example.com", "CUSTOMER"));
+
+        when(transitionOrderUseCase.transition(any(TransitionOrderCommand.class)))
+                .thenThrow(new OrderOwnershipException("Authenticated user does not own order"));
+
+        ResponseEntity<OrderResponse> response = controller.cancelOrder(orderId, request);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void shouldReturnConflictForInvalidTransition() {
+        UUID orderId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
+        when(request.getAttribute(OrderUserIdentity.class.getName()))
+                .thenReturn(new OrderUserIdentity(
+                        customerId, "customer@example.com", "CUSTOMER"));
+
+        when(transitionOrderUseCase.transition(any(TransitionOrderCommand.class)))
+                .thenThrow(new InvalidOrderStateTransitionException(
+                        OrderStatus.COMPLETED, OrderStatus.CANCELLED));
+
+        ResponseEntity<OrderResponse> response = controller.cancelOrder(orderId, request);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void shouldReturnConflictForConcurrentTransition() {
+        UUID orderId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
+        when(request.getAttribute(OrderUserIdentity.class.getName()))
+                .thenReturn(new OrderUserIdentity(
+                        customerId, "customer@example.com", "CUSTOMER"));
+
+        when(transitionOrderUseCase.transition(any(TransitionOrderCommand.class)))
+                .thenThrow(new OrderTransitionConflictException(orderId, OrderStatus.CANCELLED));
+
+        ResponseEntity<OrderResponse> response = controller.cancelOrder(orderId, request);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 }

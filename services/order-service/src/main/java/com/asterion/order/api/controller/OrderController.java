@@ -6,15 +6,20 @@ import com.asterion.order.api.response.OrderResponse;
 import com.asterion.order.application.command.CreateOrderCommand;
 import com.asterion.order.application.command.GetOrderCommand;
 import com.asterion.order.application.command.ListOrdersCommand;
+import com.asterion.order.application.command.TransitionOrderCommand;
+import com.asterion.order.application.exception.InvalidOrderStateTransitionException;
 import com.asterion.order.application.exception.MerchantNotActiveException;
 import com.asterion.order.application.exception.MerchantNotFoundException;
 import com.asterion.order.application.exception.MerchantServiceException;
 import com.asterion.order.application.exception.OrderOwnershipException;
+import com.asterion.order.application.exception.OrderTransitionConflictException;
+import com.asterion.order.application.model.OrderPage;
 import com.asterion.order.application.port.in.CreateOrderUseCase;
 import com.asterion.order.application.port.in.GetOrderUseCase;
 import com.asterion.order.application.port.in.ListOrdersUseCase;
-import com.asterion.order.application.model.OrderPage;
+import com.asterion.order.application.port.in.TransitionOrderUseCase;
 import com.asterion.order.domain.model.Order;
+import com.asterion.order.domain.model.OrderStatus;
 import com.asterion.order.infrastructure.security.OrderUserIdentity;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -31,13 +36,18 @@ public class OrderController {
     private final CreateOrderUseCase createOrderUseCase;
     private final GetOrderUseCase getOrderUseCase;
     private final ListOrdersUseCase listOrdersUseCase;
+    private final TransitionOrderUseCase transitionOrderUseCase;
 
-    public OrderController(CreateOrderUseCase createOrderUseCase,
-                           GetOrderUseCase getOrderUseCase,
-                           ListOrdersUseCase listOrdersUseCase) {
+    public OrderController(
+            CreateOrderUseCase createOrderUseCase,
+            GetOrderUseCase getOrderUseCase,
+            ListOrdersUseCase listOrdersUseCase,
+            TransitionOrderUseCase transitionOrderUseCase) {
+
         this.createOrderUseCase = createOrderUseCase;
         this.getOrderUseCase = getOrderUseCase;
         this.listOrdersUseCase = listOrdersUseCase;
+        this.transitionOrderUseCase = transitionOrderUseCase;
     }
 
     @PostMapping
@@ -52,8 +62,9 @@ public class OrderController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 
         try {
-            Order order = createOrderUseCase.create(new CreateOrderCommand(
-                    request.merchantId(), identity.userId(), request.totalAmount())
+            Order order = createOrderUseCase.create(
+                    new CreateOrderCommand(
+                            request.merchantId(), identity.userId(), request.totalAmount())
             );
 
             return ResponseEntity
@@ -72,8 +83,10 @@ public class OrderController {
     }
 
     @GetMapping("/{orderId}")
-    public ResponseEntity<OrderResponse> getOrder(@PathVariable UUID orderId,
-                                                  HttpServletRequest httpRequest) {
+    public ResponseEntity<OrderResponse> getOrder(
+            @PathVariable UUID orderId,
+            HttpServletRequest httpRequest) {
+
         OrderUserIdentity identity = (OrderUserIdentity) httpRequest
                 .getAttribute(OrderUserIdentity.class.getName());
 
@@ -84,10 +97,12 @@ public class OrderController {
             Order order = getOrderUseCase.get(
                     new GetOrderCommand(orderId, identity.userId())
             );
+
             return ResponseEntity.ok(OrderResponse.from(order));
 
         } catch (OrderOwnershipException exception) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+
         } catch (IllegalArgumentException exception) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
@@ -113,5 +128,47 @@ public class OrderController {
         );
 
         return ResponseEntity.ok(OrderPageResponse.from(orderPage));
+    }
+
+    @PostMapping("/{orderId}/cancel")
+    public ResponseEntity<OrderResponse> cancelOrder(@PathVariable UUID orderId,
+                                                     HttpServletRequest httpRequest) {
+        return transitionOrder(orderId, OrderStatus.CANCELLED, httpRequest);
+    }
+
+    @PostMapping("/{orderId}/complete")
+    public ResponseEntity<OrderResponse> completeOrder(@PathVariable UUID orderId,
+                                                       HttpServletRequest httpRequest) {
+        return transitionOrder(orderId, OrderStatus.COMPLETED, httpRequest);
+    }
+
+    private ResponseEntity<OrderResponse> transitionOrder(
+            UUID orderId,
+            OrderStatus targetStatus,
+            HttpServletRequest httpRequest) {
+
+        OrderUserIdentity identity = (OrderUserIdentity) httpRequest
+                .getAttribute(OrderUserIdentity.class.getName());
+
+        if (identity == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        try {
+            Order order = transitionOrderUseCase.transition(
+                    new TransitionOrderCommand(orderId, identity.userId(), targetStatus)
+            );
+
+            return ResponseEntity.ok(OrderResponse.from(order));
+
+        } catch (OrderOwnershipException exception) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+
+        } catch (InvalidOrderStateTransitionException
+                 | OrderTransitionConflictException exception) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
     }
 }

@@ -1,10 +1,14 @@
 package com.asterion.order.domain.model;
 
+import com.asterion.order.application.exception.InvalidOrderStateTransitionException;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.*;
 
 class OrderTest {
@@ -61,5 +65,75 @@ class OrderTest {
     void shouldAllowZeroTotalAmount() {
         Order order = Order.create(MERCHANT_ID, CUSTOMER_ID, BigDecimal.ZERO);
         assertEquals(BigDecimal.ZERO, order.totalAmount());
+    }
+
+    @Test
+    void shouldCancelCreatedOrder() {
+        Order order = Order.create(
+                UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("100.00")
+        );
+
+        order.cancel();
+
+        assertThat(order.status()).isEqualTo(OrderStatus.CANCELLED);
+    }
+
+    @Test
+    void shouldCompleteCreatedOrder() {
+        Order order = Order.create(
+                UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("100.00")
+        );
+
+        order.complete();
+
+        assertThat(order.status()).isEqualTo(OrderStatus.COMPLETED);
+    }
+
+    @Test
+    void shouldRejectCancellationOfCancelledOrder() {
+        Order order = Order.reconstitute(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                new BigDecimal("100.00"),
+                OrderStatus.CANCELLED,
+                Instant.now());
+
+        assertThatThrownBy(order::cancel)
+                .isInstanceOf(InvalidOrderStateTransitionException.class);
+
+        assertThat(order.status()).isEqualTo(OrderStatus.CANCELLED);
+    }
+
+    @Test
+    void shouldRejectCompletionOfCompletedOrder() {
+        Order order = Order.reconstitute(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                new BigDecimal("100.00"),
+                OrderStatus.COMPLETED,
+                Instant.now());
+
+        assertThatThrownBy(order::complete)
+                .isInstanceOf(InvalidOrderStateTransitionException.class);
+
+        assertThat(order.status()).isEqualTo(OrderStatus.COMPLETED);
+    }
+
+    @Test
+    void shouldRejectCompletionOfCancelledOrder() {
+        Order order = Order.reconstitute(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                new BigDecimal("100.00"),
+                OrderStatus.CANCELLED,
+                Instant.now());
+
+        assertThatThrownBy(order::complete)
+                .isInstanceOf(InvalidOrderStateTransitionException.class);
+
+        assertThat(order.status()).isEqualTo(OrderStatus.CANCELLED);
     }
 }

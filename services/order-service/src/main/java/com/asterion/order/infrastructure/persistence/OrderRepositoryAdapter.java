@@ -3,6 +3,7 @@ package com.asterion.order.infrastructure.persistence;
 import com.asterion.order.application.model.OrderPage;
 import com.asterion.order.application.port.out.OrderRepository;
 import com.asterion.order.domain.model.Order;
+import com.asterion.order.domain.model.OrderStatus;
 import com.asterion.order.infrastructure.persistence.jpa.OrderJpaEntity;
 import com.asterion.order.infrastructure.persistence.jpa.SpringDataOrderJpaRepository;
 import org.springframework.data.domain.Page;
@@ -91,5 +92,21 @@ public class OrderRepositoryAdapter implements OrderRepository {
                 entity.getStatus(),
                 entity.getCreatedAt()
         );
+    }
+
+    @Override
+    public boolean transitionStatus(UUID orderId,
+                                    OrderStatus expectedStatus,
+                                    OrderStatus targetStatus) {
+        if (orderId == null)
+            throw new NullPointerException("orderId must not be null");
+
+        if (expectedStatus == null)
+            throw new NullPointerException("expectedStatus must not be null");
+
+        if (targetStatus == null)
+            throw new NullPointerException("targetStatus must not be null");
+
+        return repository.transitionStatus(orderId, expectedStatus, targetStatus) == 1;
     }
 }

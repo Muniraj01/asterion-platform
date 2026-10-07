@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: payment-service
+
+  datasource:
+    url: ${PAYMENT_DATASOURCE_URL:jdbc:postgresql://localhost:55434/asterion_payment}
+    username: ${PAYMENT_DATASOURCE_USERNAME:asterion}
+    password: ${PAYMENT_DATASOURCE_PASSWORD:asterion}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+    consumer:
+      group-id: ${ASTERION_PAYMENT_KAFKA_CONSUMER_GROUP_ID:payment-service}
+      auto-offset-reset: ${ASTERION_PAYMENT_KAFKA_AUTO_OFFSET_RESET:earliest}
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        isolation.level: read_committed
+
+asterion:
+  payment:
+    kafka:
+      topic: ${ASTERION_PAYMENT_KAFKA_TOPIC:order.events}
+      consumer:
+        group-id: ${ASTERION_PAYMENT_KAFKA_CONSUMER_GROUP_ID:payment-service}

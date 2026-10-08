@@ -3,6 +3,7 @@ package com.asterion.payment.infrastructure.persistence;
 import com.asterion.payment.application.port.out.PaymentRepository;
 import com.asterion.payment.domain.model.Payment;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -41,5 +42,17 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
                 payment.createdAt(),
                 payment.updatedAt()
         ) == 1;
+    }
+
+    @Override
+    @Transactional
+    public void save(Payment payment) {
+        PaymentJpaEntity entity = repository.findById(payment.paymentId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Payment not found: " + payment.paymentId())
+                );
+
+        entity.updateFromDomain(payment);
+        repository.saveAndFlush(entity);
     }
 }

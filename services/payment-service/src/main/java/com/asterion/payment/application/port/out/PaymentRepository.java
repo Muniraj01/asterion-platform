@@ -12,4 +12,6 @@ public interface PaymentRepository {
     Optional<Payment> findBySourceEventId(UUID sourceEventId);
 
     boolean createIfAbsent(Payment payment);
+
+    void save(Payment payment);
 }

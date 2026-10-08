@@ -1,6 +1,7 @@
 package com.asterion.payment.application.service;
 
 import com.asterion.payment.application.model.PaymentInitiation;
+import com.asterion.payment.application.port.in.ProcessPaymentUseCase;
 import com.asterion.payment.application.port.out.PaymentRepository;
 import com.asterion.payment.domain.model.Payment;
 import com.asterion.payment.domain.model.PaymentStatus;
@@ -26,6 +27,9 @@ class InitiatePaymentServiceTest {
     @Mock
     private PaymentRepository paymentRepository;
 
+    @Mock
+    private ProcessPaymentUseCase processPaymentUseCase;
+
     private InitiatePaymentService service;
 
     private UUID eventId;
@@ -36,8 +40,7 @@ class InitiatePaymentServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new InitiatePaymentService(paymentRepository);
-
+        service = new InitiatePaymentService(paymentRepository, processPaymentUseCase);
         eventId = UUID.randomUUID();
         orderId = UUID.randomUUID();
         merchantId = UUID.randomUUID();
@@ -82,6 +85,8 @@ class InitiatePaymentServiceTest {
         assertEquals(new BigDecimal("250.5000"), payment.totalAmount());
         assertEquals(PaymentStatus.INITIATED, payment.status());
         assertEquals(occurredAt, payment.createdAt());
+
+        verify(processPaymentUseCase).process(orderId);
     }
 
     @Test
@@ -103,10 +108,11 @@ class InitiatePaymentServiceTest {
 
         verify(paymentRepository, never()).findByOrderId(any());
         verify(paymentRepository, never()).createIfAbsent(any());
+        verifyNoInteractions(processPaymentUseCase);
     }
 
     @Test
-    void shouldIgnoreInitiationForExistingOrder() {
+    void shouldProcessExistingInitiatedPayment() {
         Payment existingPayment = Payment.initiate(
                 UUID.randomUUID(),
                 orderId,
@@ -124,6 +130,8 @@ class InitiatePaymentServiceTest {
                 .thenReturn(Optional.of(existingPayment));
 
         service.initiate(initiation());
+
+        verify(processPaymentUseCase).process(orderId);
         verify(paymentRepository, never()).createIfAbsent(any());
     }
 
@@ -140,5 +148,6 @@ class InitiatePaymentServiceTest {
 
         service.initiate(initiation());
         verify(paymentRepository).createIfAbsent(any(Payment.class));
+        verify(processPaymentUseCase, never()).process(any());
     }
 }

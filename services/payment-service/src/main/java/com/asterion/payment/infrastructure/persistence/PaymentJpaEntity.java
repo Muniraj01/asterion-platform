@@ -65,6 +65,11 @@ public class PaymentJpaEntity {
         return entity;
     }
 
+    public void updateFromDomain(Payment payment) {
+        this.status = payment.status();
+        this.updatedAt = payment.updatedAt();
+    }
+
     public Payment toDomain() {
         return Payment.rehydrate(
                 paymentId,
@@ -90,4 +95,5 @@ public class PaymentJpaEntity {
     public UUID getSourceEventId() {
         return sourceEventId;
     }
+
 }

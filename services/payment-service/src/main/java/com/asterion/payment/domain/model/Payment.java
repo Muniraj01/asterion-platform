@@ -17,6 +17,9 @@ public final class Payment {
 
     private PaymentStatus status;
     private Instant updatedAt;
+    private int attemptCount;
+    private Instant nextAttemptAt;
+    private Instant processingLeaseUntil;
 
     private Payment(
             UUID paymentId,
@@ -27,7 +30,10 @@ public final class Payment {
             BigDecimal totalAmount,
             PaymentStatus status,
             Instant createdAt,
-            Instant updatedAt) {
+            Instant updatedAt,
+            int attemptCount,
+            Instant nextAttemptAt,
+            Instant processingLeaseUntil) {
 
         this.paymentId = Objects.requireNonNull(paymentId);
         this.orderId = Objects.requireNonNull(orderId);
@@ -38,9 +44,16 @@ public final class Payment {
         this.status = Objects.requireNonNull(status);
         this.createdAt = Objects.requireNonNull(createdAt);
         this.updatedAt = Objects.requireNonNull(updatedAt);
+        this.nextAttemptAt = nextAttemptAt;
+        this.processingLeaseUntil = processingLeaseUntil;
 
         if (totalAmount.signum() < 0)
             throw new IllegalArgumentException("Payment amount must not be negative");
+
+        if (attemptCount < 0)
+            throw new IllegalArgumentException("Payment attempt count must not be negative");
+
+        this.attemptCount = attemptCount;
     }
 
     public static Payment initiate(
@@ -61,7 +74,10 @@ public final class Payment {
                 totalAmount,
                 PaymentStatus.INITIATED,
                 occurredAt,
-                occurredAt
+                occurredAt,
+                0,
+                null,
+                null
         );
     }
 
@@ -76,6 +92,36 @@ public final class Payment {
             Instant createdAt,
             Instant updatedAt) {
 
+        return rehydrate(
+                paymentId,
+                orderId,
+                merchantId,
+                customerId,
+                sourceEventId,
+                totalAmount,
+                status,
+                createdAt,
+                updatedAt,
+                0,
+                null,
+                null
+        );
+    }
+
+    public static Payment rehydrate(
+            UUID paymentId,
+            UUID orderId,
+            UUID merchantId,
+            UUID customerId,
+            UUID sourceEventId,
+            BigDecimal totalAmount,
+            PaymentStatus status,
+            Instant createdAt,
+            Instant updatedAt,
+            int attemptCount,
+            Instant nextAttemptAt,
+            Instant processingLeaseUntil) {
+
         return new Payment(
                 paymentId,
                 orderId,
@@ -85,7 +131,10 @@ public final class Payment {
                 totalAmount,
                 status,
                 createdAt,
-                updatedAt
+                updatedAt,
+                attemptCount,
+                nextAttemptAt,
+                processingLeaseUntil
         );
     }
 
@@ -101,17 +150,24 @@ public final class Payment {
         transitionTo(PaymentStatus.FAILED, now);
     }
 
-    private void transitionTo(PaymentStatus targetStatus, Instant now) {
+    public void scheduleRetry(Instant retryAt, Instant now) {
+        if (status != PaymentStatus.PROCESSING)
+            throw new InvalidPaymentStateTransitionException(status, PaymentStatus.RETRYABLE);
 
+        status = PaymentStatus.RETRYABLE;
+        updatedAt = Objects.requireNonNull(now);
+        nextAttemptAt = Objects.requireNonNull(retryAt);
+        processingLeaseUntil = null;
+    }
+
+    private void transitionTo(PaymentStatus targetStatus, Instant now) {
         boolean valid = switch (status) {
-            case INITIATED ->
+            case INITIATED, RETRYABLE ->
                     targetStatus == PaymentStatus.PROCESSING
                             || targetStatus == PaymentStatus.FAILED;
-
             case PROCESSING ->
                     targetStatus == PaymentStatus.SUCCEEDED
                             || targetStatus == PaymentStatus.FAILED;
-
             case SUCCEEDED, FAILED -> false;
         };
 
@@ -120,6 +176,13 @@ public final class Payment {
 
         status = targetStatus;
         updatedAt = Objects.requireNonNull(now);
+
+        if (targetStatus == PaymentStatus.PROCESSING) {
+            nextAttemptAt = null;
+        } else {
+            nextAttemptAt = null;
+            processingLeaseUntil = null;
+        }
     }
 
     public UUID paymentId() {
@@ -156,5 +219,17 @@ public final class Payment {
 
     public Instant updatedAt() {
         return updatedAt;
+    }
+
+    public int attemptCount() {
+        return attemptCount;
+    }
+
+    public Instant nextAttemptAt() {
+        return nextAttemptAt;
+    }
+
+    public Instant processingLeaseUntil() {
+        return processingLeaseUntil;
     }
 }

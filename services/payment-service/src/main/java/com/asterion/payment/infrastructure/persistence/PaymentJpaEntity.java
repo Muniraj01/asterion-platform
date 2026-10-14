@@ -46,6 +46,15 @@ public class PaymentJpaEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "attempt_count", nullable = false)
+    private int attemptCount;
+
+    @Column(name = "next_attempt_at")
+    private Instant nextAttemptAt;
+
+    @Column(name = "processing_lease_until")
+    private Instant processingLeaseUntil;
+
     protected PaymentJpaEntity() {
     }
 
@@ -61,6 +70,9 @@ public class PaymentJpaEntity {
         entity.status = payment.status();
         entity.createdAt = payment.createdAt();
         entity.updatedAt = payment.updatedAt();
+        entity.attemptCount = payment.attemptCount();
+        entity.nextAttemptAt = payment.nextAttemptAt();
+        entity.processingLeaseUntil = payment.processingLeaseUntil();
 
         return entity;
     }
@@ -68,6 +80,9 @@ public class PaymentJpaEntity {
     public void updateFromDomain(Payment payment) {
         this.status = payment.status();
         this.updatedAt = payment.updatedAt();
+        this.attemptCount = payment.attemptCount();
+        this.nextAttemptAt = payment.nextAttemptAt();
+        this.processingLeaseUntil = payment.processingLeaseUntil();
     }
 
     public Payment toDomain() {
@@ -80,7 +95,10 @@ public class PaymentJpaEntity {
                 totalAmount,
                 status,
                 createdAt,
-                updatedAt
+                updatedAt,
+                attemptCount,
+                nextAttemptAt,
+                processingLeaseUntil
         );
     }
 
@@ -95,5 +113,4 @@ public class PaymentJpaEntity {
     public UUID getSourceEventId() {
         return sourceEventId;
     }
-
 }

@@ -5,5 +5,5 @@ import com.asterion.payment.domain.model.Payment;
 
 public interface PaymentProcessorPort {
 
-    PaymentProcessingResult process(Payment payment);
+    PaymentProcessingResult process(Payment payment, String idempotencyKey);
 }

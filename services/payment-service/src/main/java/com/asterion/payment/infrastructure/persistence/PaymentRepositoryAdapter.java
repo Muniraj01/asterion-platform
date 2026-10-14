@@ -5,6 +5,8 @@ import com.asterion.payment.domain.model.Payment;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,6 +32,7 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
     }
 
     @Override
+    @Transactional
     public boolean createIfAbsent(Payment payment) {
         return repository.insertIfAbsent(
                 payment.paymentId(),
@@ -46,11 +49,35 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
 
     @Override
     @Transactional
+    public Optional<Payment> claimForProcessing(
+            UUID orderId, Instant now, Instant leaseUntil, int maxAttempts) {
+
+        int claimed = repository.claimForProcessing(orderId, now, leaseUntil, maxAttempts);
+
+        if (claimed != 1)
+            return Optional.empty();
+
+        return repository.findByOrderId(orderId)
+                .map(PaymentJpaEntity::toDomain);
+    }
+
+    @Override
+    public List<UUID> findDueOrderIds(Instant now, int maxAttempts, int limit) {
+        return repository.findDueOrderIds(now, maxAttempts, limit);
+    }
+
+    @Override
+    @Transactional
+    public int failExpiredProcessingBeyondMaxAttempts(Instant now, int maxAttempts) {
+        return repository.failExpiredProcessingBeyondMaxAttempts(now, maxAttempts);
+    }
+
+    @Override
+    @Transactional
     public void save(Payment payment) {
         PaymentJpaEntity entity = repository.findById(payment.paymentId())
                 .orElseThrow(() -> new IllegalStateException(
-                        "Payment not found: " + payment.paymentId())
-                );
+                        "Payment not found: " + payment.paymentId()));
 
         entity.updateFromDomain(payment);
         repository.saveAndFlush(entity);

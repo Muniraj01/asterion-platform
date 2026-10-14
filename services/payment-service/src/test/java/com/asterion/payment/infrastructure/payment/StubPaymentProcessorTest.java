@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class StubPaymentProcessorTest {
 
@@ -25,10 +26,26 @@ class StubPaymentProcessorTest {
         );
 
         StubPaymentProcessor processor = new StubPaymentProcessor();
+        assertEquals(PaymentProcessingResult.SUCCEEDED,
+                processor.process(payment, payment.paymentId().toString())
+        );
+    }
 
-        assertEquals(
-                PaymentProcessingResult.SUCCEEDED,
-                processor.process(payment)
+    @Test
+    void shouldRejectBlankIdempotencyKey() {
+        Payment payment = Payment.initiate(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                new BigDecimal("100.00"),
+                Instant.parse("2026-10-07T10:00:00Z")
+        );
+
+        StubPaymentProcessor processor = new StubPaymentProcessor();
+        assertThrows(IllegalArgumentException.class,
+                () -> processor.process(payment, " ")
         );
     }
 }

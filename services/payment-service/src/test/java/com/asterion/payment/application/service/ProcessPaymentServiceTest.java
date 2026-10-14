@@ -13,16 +13,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ProcessPaymentServiceTest {
+
+    private static final int MAX_ATTEMPTS = 5;
 
     @Mock
     private PaymentRepository paymentRepository;
@@ -34,127 +38,150 @@ class ProcessPaymentServiceTest {
 
     private UUID paymentId;
     private UUID orderId;
+    private UUID merchantId;
+    private UUID customerId;
+    private UUID eventId;
+
     private Instant createdAt;
-    private Instant processingAt;
-    private Instant completedAt;
+    private Instant now;
 
     @BeforeEach
     void setUp() {
         paymentId = UUID.randomUUID();
         orderId = UUID.randomUUID();
+        merchantId = UUID.randomUUID();
+        customerId = UUID.randomUUID();
+        eventId = UUID.randomUUID();
 
         createdAt = Instant.parse("2026-10-07T10:00:00Z");
-        processingAt = Instant.parse("2026-10-07T10:00:10Z");
-        completedAt = Instant.parse("2026-10-07T10:00:20Z");
+        now = Instant.parse("2026-10-07T10:00:20Z");
 
-        Clock clock = Clock.fixed(completedAt, ZoneOffset.UTC);
         service = new ProcessPaymentService(
-                paymentRepository, paymentProcessorPort, clock);
+                paymentRepository,
+                paymentProcessorPort,
+                Clock.fixed(now, ZoneOffset.UTC),
+                MAX_ATTEMPTS,
+                Duration.ofSeconds(5),
+                Duration.ofMinutes(5),
+                Duration.ofSeconds(60)
+        );
     }
 
-    private Payment payment() {
-        return Payment.initiate(
+    private Payment claimedPayment(int attemptCount) {
+        return Payment.rehydrate(
                 paymentId,
                 orderId,
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                UUID.randomUUID(),
+                merchantId,
+                customerId,
+                eventId,
                 new BigDecimal("250.00"),
-                createdAt
+                PaymentStatus.PROCESSING,
+                createdAt,
+                now,
+                attemptCount,
+                null,
+                now.plusSeconds(60)
         );
+    }
+
+    private void claim(Payment payment) {
+        when(paymentRepository.claimForProcessing(
+                eq(orderId),
+                eq(now),
+                eq(now.plusSeconds(60)),
+                eq(MAX_ATTEMPTS)))
+                .thenReturn(Optional.of(payment));
     }
 
     @Test
     void shouldProcessPaymentSuccessfully() {
-        Payment payment = payment();
+        Payment payment = claimedPayment(1);
+        claim(payment);
 
-        when(paymentRepository.findByOrderId(orderId))
-                .thenReturn(Optional.of(payment));
-
-        when(paymentProcessorPort.process(payment))
+        when(paymentProcessorPort.process(payment, paymentId.toString()))
                 .thenReturn(PaymentProcessingResult.SUCCEEDED);
 
         service.process(orderId);
 
         assertEquals(PaymentStatus.SUCCEEDED, payment.status());
-        assertEquals(completedAt, payment.updatedAt());
+        assertEquals(now, payment.updatedAt());
 
-        verify(paymentRepository, atLeast(2)).save(payment);
-        verify(paymentProcessorPort).process(payment);
+        verify(paymentProcessorPort).process(payment, paymentId.toString());
+        verify(paymentRepository).save(payment);
     }
 
     @Test
     void shouldMarkPaymentFailedWhenProcessorReturnsFailure() {
-        Payment payment = payment();
+        Payment payment = claimedPayment(1);
+        claim(payment);
 
-        when(paymentRepository.findByOrderId(orderId))
-                .thenReturn(Optional.of(payment));
-
-        when(paymentProcessorPort.process(payment))
+        when(paymentProcessorPort.process(payment, paymentId.toString()))
                 .thenReturn(PaymentProcessingResult.FAILED);
 
         service.process(orderId);
 
         assertEquals(PaymentStatus.FAILED, payment.status());
-        verify(paymentProcessorPort).process(payment);
-        verify(paymentRepository, atLeast(2)).save(payment);
+        verify(paymentRepository).save(payment);
     }
 
     @Test
-    void shouldNotProcessAlreadySucceededPayment() {
-        Payment payment = payment();
-        payment.startProcessing(processingAt);
-        payment.succeed(completedAt);
+    void shouldScheduleRetryWhenProcessorThrows() {
+        Payment payment = claimedPayment(1);
+        claim(payment);
 
-        when(paymentRepository.findByOrderId(orderId))
-                .thenReturn(Optional.of(payment));
+        when(paymentProcessorPort.process(payment, paymentId.toString()))
+                .thenThrow(new IllegalStateException("processor unavailable"));
 
         service.process(orderId);
 
-        verifyNoInteractions(paymentProcessorPort);
-        verify(paymentRepository, never()).save(any());
+        assertEquals(PaymentStatus.RETRYABLE, payment.status());
+        assertEquals(now.plusSeconds(5), payment.nextAttemptAt());
+        assertNull(payment.processingLeaseUntil());
+        verify(paymentRepository).save(payment);
     }
 
     @Test
-    void shouldNotProcessAlreadyFailedPayment() {
-        Payment payment = payment();
-        payment.fail(processingAt);
+    void shouldFailWhenRetryLimitIsReached() {
+        Payment payment = claimedPayment(MAX_ATTEMPTS);
+        claim(payment);
 
-        when(paymentRepository.findByOrderId(orderId))
-                .thenReturn(Optional.of(payment));
+        when(paymentProcessorPort.process(payment, paymentId.toString()))
+                .thenThrow(new IllegalStateException("processor unavailable"));
 
         service.process(orderId);
-
-        verifyNoInteractions(paymentProcessorPort);
-        verify(paymentRepository, never()).save(any());
-    }
-
-    @Test
-    void shouldFailPaymentWhenProcessorThrows() {
-        Payment payment = payment();
-
-        when(paymentRepository.findByOrderId(orderId))
-                .thenReturn(Optional.of(payment));
-
-        RuntimeException processorFailure =
-                new IllegalStateException("processor unavailable");
-
-        when(paymentProcessorPort.process(payment))
-                .thenThrow(processorFailure);
-
-        assertThrows(RuntimeException.class, () -> service.process(orderId));
 
         assertEquals(PaymentStatus.FAILED, payment.status());
-        verify(paymentRepository, atLeast(2)).save(payment);
+        assertNull(payment.nextAttemptAt());
+        verify(paymentRepository).save(payment);
     }
 
     @Test
-    void shouldFailWhenPaymentDoesNotExist() {
-        when(paymentRepository.findByOrderId(orderId))
+    void shouldNotCallProcessorWhenClaimIsUnavailable() {
+        when(paymentRepository.claimForProcessing(
+                eq(orderId),
+                eq(now),
+                eq(now.plusSeconds(60)),
+                eq(MAX_ATTEMPTS)))
                 .thenReturn(Optional.empty());
 
-        assertThrows(IllegalStateException.class, () -> service.process(orderId));
+        service.process(orderId);
 
         verifyNoInteractions(paymentProcessorPort);
+        verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldPropagateFailureToPersistOutcome() {
+        Payment payment = claimedPayment(1);
+        claim(payment);
+
+        when(paymentProcessorPort.process(payment, paymentId.toString()))
+                .thenReturn(PaymentProcessingResult.SUCCEEDED);
+
+        doThrow(new IllegalStateException("database unavailable"))
+                .when(paymentRepository).save(payment);
+
+        assertThrows(IllegalStateException.class, () -> service.process(orderId));
+        assertEquals(PaymentStatus.SUCCEEDED, payment.status());
     }
 }

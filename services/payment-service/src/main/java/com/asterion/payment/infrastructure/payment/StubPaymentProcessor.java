@@ -9,7 +9,15 @@ import org.springframework.stereotype.Component;
 public class StubPaymentProcessor implements PaymentProcessorPort {
 
     @Override
-    public PaymentProcessingResult process(Payment payment) {
+    public PaymentProcessingResult process(Payment payment, String idempotencyKey) {
+
+        if (idempotencyKey == null || idempotencyKey.isBlank())
+            throw new IllegalArgumentException(
+                    "Payment idempotency key must not be blank");
+
+        // Simulated successful response.
+        // A real provider adapter must send this key to the provider and
+        // map provider-specific outcomes to PaymentProcessingResult.
         return PaymentProcessingResult.SUCCEEDED;
     }
 }

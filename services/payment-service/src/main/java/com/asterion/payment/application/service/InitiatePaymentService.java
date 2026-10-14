@@ -6,7 +6,6 @@ import com.asterion.payment.application.port.in.ProcessPaymentUseCase;
 import com.asterion.payment.application.port.out.PaymentRepository;
 import com.asterion.payment.domain.model.Payment;
 import com.asterion.payment.domain.model.PaymentStatus;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
@@ -23,18 +22,19 @@ public class InitiatePaymentService implements InitiatePaymentUseCase {
     }
 
     @Override
-    @Transactional
     public void initiate(PaymentInitiation paymentInitiation) {
         if (paymentRepository.findBySourceEventId(
-                paymentInitiation.eventId()).isPresent())
+                paymentInitiation.eventId()).isPresent()) {
             return;
+        }
 
         Payment existingPayment = paymentRepository
                 .findByOrderId(paymentInitiation.orderId())
                 .orElse(null);
 
         if (existingPayment != null) {
-            if (existingPayment.status() == PaymentStatus.INITIATED) {
+            if (existingPayment.status() == PaymentStatus.INITIATED
+                    || existingPayment.status() == PaymentStatus.RETRYABLE) {
                 processPaymentUseCase.process(existingPayment.orderId());
             }
             return;

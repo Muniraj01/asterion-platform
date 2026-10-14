@@ -137,4 +137,27 @@ class PaymentTest {
                 )
         );
     }
+
+    @Test
+    void shouldScheduleRetryFromProcessing() {
+        Payment payment = payment();
+        Instant processingAt = NOW.plusSeconds(10);
+        Instant retryAt = NOW.plusSeconds(15);
+
+        payment.startProcessing(processingAt);
+        payment.scheduleRetry(retryAt, NOW.plusSeconds(11));
+
+        assertEquals(PaymentStatus.RETRYABLE, payment.status());
+        assertEquals(retryAt, payment.nextAttemptAt());
+        assertNull(payment.processingLeaseUntil());
+        assertEquals(NOW.plusSeconds(11), payment.updatedAt());
+    }
+
+    @Test
+    void shouldRejectRetrySchedulingOutsideProcessingState() {
+        Payment payment = payment();
+        assertThrows(InvalidPaymentStateTransitionException.class,
+                () -> payment.scheduleRetry(NOW.plusSeconds(15),
+                        NOW.plusSeconds(10)));
+    }
 }

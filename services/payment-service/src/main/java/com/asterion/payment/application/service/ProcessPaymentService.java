@@ -1,5 +1,9 @@
+
 package com.asterion.payment.application.service;
 
+import com.asterion.events.DomainEvent;
+import com.asterion.events.PaymentFailedEvent;
+import com.asterion.events.PaymentSucceededEvent;
 import com.asterion.payment.application.model.PaymentProcessingResult;
 import com.asterion.payment.application.port.in.ProcessPaymentUseCase;
 import com.asterion.payment.application.port.out.PaymentProcessorPort;
@@ -35,19 +39,23 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
             Duration maxRetryDelay,
             Duration processingLeaseDuration) {
 
-        if (maxAttempts < 1)
-            throw new IllegalArgumentException("Maximum attempts must be at least one");
-
-        if (baseRetryDelay.isNegative() || baseRetryDelay.isZero())
-            throw new IllegalArgumentException("Base retry delay must be positive");
-
+        if (maxAttempts < 1) {
+            throw new IllegalArgumentException(
+                    "Maximum attempts must be at least one");
+        }
+        if (baseRetryDelay.isNegative() || baseRetryDelay.isZero()) {
+            throw new IllegalArgumentException(
+                    "Base retry delay must be positive");
+        }
         if (maxRetryDelay.compareTo(baseRetryDelay) < 0) {
             throw new IllegalArgumentException(
                     "Maximum retry delay must not be less than base delay");
         }
-
-        if (processingLeaseDuration.isNegative() || processingLeaseDuration.isZero())
-            throw new IllegalArgumentException("Processing lease duration must be positive");
+        if (processingLeaseDuration.isNegative()
+                || processingLeaseDuration.isZero()) {
+            throw new IllegalArgumentException(
+                    "Processing lease duration must be positive");
+        }
 
         this.paymentRepository = paymentRepository;
         this.paymentProcessorPort = paymentProcessorPort;
@@ -60,7 +68,7 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
 
     @Override
     public void process(UUID orderId) {
-        Instant now = Instant.now(clock);
+        Instant now = clock.instant();
         Instant leaseUntil = now.plus(processingLeaseDuration);
 
         Payment payment = paymentRepository
@@ -72,28 +80,30 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
 
         PaymentProcessingResult result;
         try {
-            result = paymentProcessorPort.process(payment, payment.paymentId().toString());
+            result = paymentProcessorPort.process(
+                    payment, payment.paymentId().toString());
         } catch (RuntimeException exception) {
             recordTechnicalFailure(payment, exception);
             return;
         }
 
-        Instant completedAt = Instant.now(clock);
+        Instant completedAt = clock.instant();
 
         if (result == PaymentProcessingResult.SUCCEEDED) {
             payment.succeed(completedAt);
+            paymentRepository.saveWithOutcome(
+                    payment, succeededEvent(payment, completedAt));
         } else {
             payment.fail(completedAt);
+            paymentRepository.saveWithOutcome(
+                    payment, failedEvent(payment, completedAt));
         }
-
-        // Persistence errors propagate. The expired processing lease allows
-        // recovery if the outcome could not be recorded.
-        paymentRepository.save(payment);
     }
 
     private void recordTechnicalFailure(
             Payment payment, RuntimeException exception) {
-        Instant now = Instant.now(clock);
+        Instant now = clock.instant();
+
         if (payment.attemptCount() >= maxAttempts) {
             payment.fail(now);
 
@@ -102,8 +112,9 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
                     payment.paymentId(),
                     payment.orderId(),
                     payment.attemptCount(),
-                    exception
-            );
+                    exception);
+
+            paymentRepository.saveWithOutcome(payment, failedEvent(payment, now));
         } else {
             Instant retryAt = now.plus(retryDelay(payment.attemptCount()));
             payment.scheduleRetry(retryAt, now);
@@ -114,13 +125,35 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
                     payment.orderId(),
                     payment.attemptCount(),
                     retryAt,
-                    exception
-            );
-        }
+                    exception);
 
-        // Persisting the retry/failure state is essential. If this write
-        // fails, the exception propagates and the lease enables recovery.
-        paymentRepository.save(payment);
+            // Intermediate failures do not produce terminal outcome events.
+            paymentRepository.save(payment);
+        }
+    }
+
+    private PaymentSucceededEvent succeededEvent(
+            Payment payment, Instant occurredAt) {
+        return new PaymentSucceededEvent(
+                UUID.randomUUID(),
+                occurredAt,
+                payment.paymentId(),
+                payment.orderId(),
+                payment.merchantId(),
+                payment.customerId(),
+                payment.totalAmount());
+    }
+
+    private PaymentFailedEvent failedEvent(
+            Payment payment, Instant occurredAt) {
+        return new PaymentFailedEvent(
+                UUID.randomUUID(),
+                occurredAt,
+                payment.paymentId(),
+                payment.orderId(),
+                payment.merchantId(),
+                payment.customerId(),
+                payment.totalAmount());
     }
 
     private Duration retryDelay(int attemptCount) {

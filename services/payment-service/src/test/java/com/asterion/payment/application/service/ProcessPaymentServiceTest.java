@@ -1,5 +1,8 @@
+
 package com.asterion.payment.application.service;
 
+import com.asterion.events.PaymentFailedEvent;
+import com.asterion.events.PaymentSucceededEvent;
 import com.asterion.payment.application.model.PaymentProcessingResult;
 import com.asterion.payment.application.port.out.PaymentProcessorPort;
 import com.asterion.payment.application.port.out.PaymentRepository;
@@ -63,8 +66,7 @@ class ProcessPaymentServiceTest {
                 MAX_ATTEMPTS,
                 Duration.ofSeconds(5),
                 Duration.ofMinutes(5),
-                Duration.ofSeconds(60)
-        );
+                Duration.ofSeconds(60));
     }
 
     private Payment claimedPayment(int attemptCount) {
@@ -80,8 +82,7 @@ class ProcessPaymentServiceTest {
                 now,
                 attemptCount,
                 null,
-                now.plusSeconds(60)
-        );
+                now.plusSeconds(60));
     }
 
     private void claim(Payment payment) {
@@ -94,7 +95,7 @@ class ProcessPaymentServiceTest {
     }
 
     @Test
-    void shouldProcessPaymentSuccessfully() {
+    void shouldPersistSuccessfulOutcomeWithEvent() {
         Payment payment = claimedPayment(1);
         claim(payment);
 
@@ -106,12 +107,13 @@ class ProcessPaymentServiceTest {
         assertEquals(PaymentStatus.SUCCEEDED, payment.status());
         assertEquals(now, payment.updatedAt());
 
-        verify(paymentProcessorPort).process(payment, paymentId.toString());
-        verify(paymentRepository).save(payment);
+        verify(paymentRepository).saveWithOutcome(
+                eq(payment), isA(PaymentSucceededEvent.class));
+        verify(paymentRepository, never()).save(any());
     }
 
     @Test
-    void shouldMarkPaymentFailedWhenProcessorReturnsFailure() {
+    void shouldPersistFailedOutcomeWithEvent() {
         Payment payment = claimedPayment(1);
         claim(payment);
 
@@ -121,11 +123,14 @@ class ProcessPaymentServiceTest {
         service.process(orderId);
 
         assertEquals(PaymentStatus.FAILED, payment.status());
-        verify(paymentRepository).save(payment);
+
+        verify(paymentRepository).saveWithOutcome(
+                eq(payment), isA(PaymentFailedEvent.class));
+        verify(paymentRepository, never()).save(any());
     }
 
     @Test
-    void shouldScheduleRetryWhenProcessorThrows() {
+    void shouldScheduleRetryWithoutTerminalEvent() {
         Payment payment = claimedPayment(1);
         claim(payment);
 
@@ -137,11 +142,13 @@ class ProcessPaymentServiceTest {
         assertEquals(PaymentStatus.RETRYABLE, payment.status());
         assertEquals(now.plusSeconds(5), payment.nextAttemptAt());
         assertNull(payment.processingLeaseUntil());
+
         verify(paymentRepository).save(payment);
+        verify(paymentRepository, never()).saveWithOutcome(any(), any());
     }
 
     @Test
-    void shouldFailWhenRetryLimitIsReached() {
+    void shouldEmitFailureEventWhenTechnicalRetriesAreExhausted() {
         Payment payment = claimedPayment(MAX_ATTEMPTS);
         claim(payment);
 
@@ -152,7 +159,10 @@ class ProcessPaymentServiceTest {
 
         assertEquals(PaymentStatus.FAILED, payment.status());
         assertNull(payment.nextAttemptAt());
-        verify(paymentRepository).save(payment);
+
+        verify(paymentRepository).saveWithOutcome(
+                eq(payment), isA(PaymentFailedEvent.class));
+        verify(paymentRepository, never()).save(any());
     }
 
     @Test
@@ -168,10 +178,11 @@ class ProcessPaymentServiceTest {
 
         verifyNoInteractions(paymentProcessorPort);
         verify(paymentRepository, never()).save(any());
+        verify(paymentRepository, never()).saveWithOutcome(any(), any());
     }
 
     @Test
-    void shouldPropagateFailureToPersistOutcome() {
+    void shouldPropagateFailureToPersistTerminalOutcome() {
         Payment payment = claimedPayment(1);
         claim(payment);
 
@@ -179,7 +190,8 @@ class ProcessPaymentServiceTest {
                 .thenReturn(PaymentProcessingResult.SUCCEEDED);
 
         doThrow(new IllegalStateException("database unavailable"))
-                .when(paymentRepository).save(payment);
+                .when(paymentRepository)
+                .saveWithOutcome(eq(payment), any(PaymentSucceededEvent.class));
 
         assertThrows(IllegalStateException.class, () -> service.process(orderId));
         assertEquals(PaymentStatus.SUCCEEDED, payment.status());

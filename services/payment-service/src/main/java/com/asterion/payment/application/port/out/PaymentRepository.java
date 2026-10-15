@@ -1,5 +1,7 @@
+
 package com.asterion.payment.application.port.out;
 
+import com.asterion.events.DomainEvent;
 import com.asterion.payment.domain.model.Payment;
 
 import java.time.Instant;
@@ -15,12 +17,17 @@ public interface PaymentRepository {
 
     boolean createIfAbsent(Payment payment);
 
-    Optional<Payment> claimForProcessing(UUID orderId, Instant now,
-                                         Instant leaseUntil, int maxAttempts);
+    Optional<Payment> claimForProcessing(
+            UUID orderId, Instant now, Instant leaseUntil, int maxAttempts);
 
     List<UUID> findDueOrderIds(Instant now, int maxAttempts, int limit);
 
     int failExpiredProcessingBeyondMaxAttempts(Instant now, int maxAttempts);
 
     void save(Payment payment);
+
+    /**
+     * Atomically persists a terminal payment state and its outcome event.
+     */
+    void saveWithOutcome(Payment payment, DomainEvent event);
 }

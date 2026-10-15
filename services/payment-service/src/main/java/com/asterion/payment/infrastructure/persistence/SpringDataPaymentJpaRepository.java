@@ -1,3 +1,4 @@
+
 package com.asterion.payment.infrastructure.persistence;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -106,18 +107,16 @@ public interface SpringDataPaymentJpaRepository
             @Param("maxAttempts") int maxAttempts,
             @Param("limit") int limit);
 
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = """
-        UPDATE payments
-        SET status = 'FAILED',
-            processing_lease_until = NULL,
-            next_attempt_at = NULL,
-            updated_at = :now
+        SELECT *
+        FROM payments
         WHERE status = 'PROCESSING'
           AND processing_lease_until <= :now
           AND attempt_count >= :maxAttempts
+        ORDER BY processing_lease_until ASC
+        FOR UPDATE SKIP LOCKED
         """, nativeQuery = true)
-    int failExpiredProcessingBeyondMaxAttempts(
+    List<PaymentJpaEntity> findExpiredProcessingBeyondMaxAttempts(
             @Param("now") Instant now,
             @Param("maxAttempts") int maxAttempts);
 }

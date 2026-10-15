@@ -1,10 +1,14 @@
+
 package com.asterion.payment.config;
 
 import com.asterion.payment.application.port.in.InitiatePaymentUseCase;
 import com.asterion.payment.application.port.in.ProcessPaymentUseCase;
+import com.asterion.payment.application.port.out.PaymentOutcomeEventPublisher;
+import com.asterion.payment.application.port.out.PaymentOutboxRepository;
 import com.asterion.payment.application.port.out.PaymentProcessorPort;
 import com.asterion.payment.application.port.out.PaymentRepository;
 import com.asterion.payment.application.service.InitiatePaymentService;
+import com.asterion.payment.application.service.PaymentOutboxPublisher;
 import com.asterion.payment.application.service.ProcessPaymentService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -47,16 +51,29 @@ public class PaymentApplicationConfiguration {
                 maxAttempts,
                 Duration.ofMillis(baseRetryDelayMs),
                 Duration.ofMillis(maxRetryDelayMs),
-                Duration.ofMillis(leaseDurationMs)
-        );
+                Duration.ofMillis(leaseDurationMs));
     }
 
     @Bean
     InitiatePaymentUseCase initiatePaymentUseCase(
             PaymentRepository paymentRepository,
             ProcessPaymentUseCase processPaymentUseCase) {
-
         return new InitiatePaymentService(paymentRepository, processPaymentUseCase);
+    }
+
+    @Bean
+    PaymentOutboxPublisher paymentOutboxPublisher(
+            PaymentOutboxRepository repository,
+            PaymentOutcomeEventPublisher eventPublisher,
+            Clock paymentClock,
+            @Value("${asterion.payment.outbox.claim-lease-ms:60000}")
+            long claimLeaseMs) {
+
+        return new PaymentOutboxPublisher(
+                repository,
+                eventPublisher,
+                paymentClock,
+                Duration.ofMillis(claimLeaseMs));
     }
 
     @Bean
@@ -67,9 +84,7 @@ public class PaymentApplicationConfiguration {
                 new ConcurrentKafkaListenerContainerFactory<>();
 
         factory.setConsumerFactory(consumerFactory);
-        factory.getContainerProperties()
-                .setAckMode(ContainerProperties.AckMode.RECORD);
-
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
         return factory;
     }
 }

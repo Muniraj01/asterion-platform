@@ -32,16 +32,32 @@ spring:
       properties:
         isolation.level: read_committed
 
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
 asterion:
   payment:
     kafka:
       topic: ${ASTERION_PAYMENT_KAFKA_TOPIC:order.events}
       consumer:
         group-id: ${ASTERION_PAYMENT_KAFKA_CONSUMER_GROUP_ID:payment-service}
+
+    outcome:
+      kafka:
+        topic: ${ASTERION_PAYMENT_OUTCOME_KAFKA_TOPIC:payment.events}
+
+    outbox:
+      scheduler-enabled: ${ASTERION_PAYMENT_OUTBOX_SCHEDULER_ENABLED:true}
+      batch-size: ${ASTERION_PAYMENT_OUTBOX_BATCH_SIZE:100}
+      poll-interval-ms: ${ASTERION_PAYMENT_OUTBOX_POLL_INTERVAL_MS:1000}
+      claim-lease-ms: ${ASTERION_PAYMENT_OUTBOX_CLAIM_LEASE_MS:60000}
+
     processing:
       max-attempts: ${ASTERION_PAYMENT_MAX_ATTEMPTS:5}
       base-retry-delay-ms: ${ASTERION_PAYMENT_BASE_RETRY_DELAY_MS:5000}
       max-retry-delay-ms: ${ASTERION_PAYMENT_MAX_RETRY_DELAY_MS:300000}
       lease-duration-ms: ${ASTERION_PAYMENT_LEASE_DURATION_MS:60000}
+      recovery-enabled: ${ASTERION_PAYMENT_RECOVERY_ENABLED:true}
       recovery-interval-ms: ${ASTERION_PAYMENT_RECOVERY_INTERVAL_MS:5000}
       recovery-batch-size: ${ASTERION_PAYMENT_RECOVERY_BATCH_SIZE:100}

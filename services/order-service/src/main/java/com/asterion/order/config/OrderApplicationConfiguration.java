@@ -2,6 +2,7 @@ package com.asterion.order.config;
 
 import com.asterion.order.application.port.in.CreateOrderUseCase;
 import com.asterion.order.application.port.in.GetOrderUseCase;
+import com.asterion.order.application.port.in.HandlePaymentOutcomeUseCase;
 import com.asterion.order.application.port.in.ListOrdersUseCase;
 import com.asterion.order.application.port.in.TransitionOrderUseCase;
 import com.asterion.order.application.port.out.EventPublisher;
@@ -11,6 +12,7 @@ import com.asterion.order.application.port.out.OrderRepository;
 import com.asterion.order.application.port.out.PaymentInitiationPort;
 import com.asterion.order.application.service.CreateOrderService;
 import com.asterion.order.application.service.GetOrderService;
+import com.asterion.order.application.service.HandlePaymentOutcomeService;
 import com.asterion.order.application.service.ListOrdersService;
 import com.asterion.order.application.service.OrderOutboxPublisher;
 import com.asterion.order.application.service.TransitionOrderService;
@@ -18,6 +20,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.time.Clock;
@@ -55,8 +60,30 @@ public class OrderApplicationConfiguration {
     }
 
     @Bean
-    TransitionOrderUseCase transitionOrderUseCase(OrderRepository orderRepository) {
+    TransitionOrderUseCase transitionOrderUseCase(
+            OrderRepository orderRepository) {
         return new TransitionOrderService(orderRepository);
+    }
+
+    @Bean
+    HandlePaymentOutcomeUseCase handlePaymentOutcomeUseCase(
+            OrderRepository orderRepository) {
+        return new HandlePaymentOutcomeService(orderRepository);
+    }
+
+    @Bean
+    ConcurrentKafkaListenerContainerFactory<String, String>
+    orderPaymentOutcomeKafkaListenerContainerFactory(
+            ConsumerFactory<String, String> consumerFactory) {
+
+        ConcurrentKafkaListenerContainerFactory<String, String> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+
+        factory.setConsumerFactory(consumerFactory);
+        factory.getContainerProperties().setAckMode(
+                ContainerProperties.AckMode.RECORD);
+
+        return factory;
     }
 
     @Bean

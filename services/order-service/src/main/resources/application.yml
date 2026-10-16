@@ -22,6 +22,16 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+    consumer:
+      group-id: ${ASTERION_ORDER_PAYMENT_OUTCOME_KAFKA_CONSUMER_GROUP_ID:order-service}
+      auto-offset-reset: ${ASTERION_ORDER_PAYMENT_OUTCOME_KAFKA_AUTO_OFFSET_RESET:earliest}
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        isolation.level: read_committed
+
     producer:
       retries: ${KAFKA_PRODUCER_RETRIES:3}
       properties:
@@ -43,6 +53,12 @@ asterion:
   order:
     kafka:
       topic: ${ASTERION_ORDER_KAFKA_TOPIC:order.events}
+
+    payment-outcome:
+      kafka:
+        topic: ${ASTERION_ORDER_PAYMENT_OUTCOME_KAFKA_TOPIC:payment.events}
+        consumer:
+          group-id: ${ASTERION_ORDER_PAYMENT_OUTCOME_KAFKA_CONSUMER_GROUP_ID:order-service}
 
     outbox:
       poll-interval-ms: ${ASTERION_ORDER_OUTBOX_POLL_INTERVAL_MS:1000}

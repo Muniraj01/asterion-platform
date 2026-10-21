@@ -1,3 +1,4 @@
+
 package com.asterion.order.infrastructure.messaging;
 
 import com.asterion.events.PaymentFailedEvent;
@@ -9,8 +10,8 @@ import org.apache.kafka.common.header.internals.RecordHeader;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.nio.charset.StandardCharsets;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -55,39 +56,55 @@ class PaymentOutcomeKafkaConsumerTest {
     }
 
     @Test
-    void shouldRejectMissingEventTypeHeader() {
+    void shouldRejectMissingEventTypeHeaderAsPermanentFailure() {
         ConsumerRecord<String, String> record = new ConsumerRecord<>(
                 "payment.events", 0, 0L, "key", "{}");
 
         assertThatThrownBy(() -> consumer.consume(record))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Failed to process payment outcome event");
+                .isInstanceOf(PermanentPaymentOutcomeException.class)
+                .hasMessageContaining("Missing Kafka eventType header");
 
         verifyNoInteractions(useCase);
     }
 
     @Test
-    void shouldRejectUnsupportedEventType() {
+    void shouldRejectUnsupportedEventTypeAsPermanentFailure() {
         ConsumerRecord<String, String> record = record(
                 "payment.refunded.v1", "{}");
 
         assertThatThrownBy(() -> consumer.consume(record))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Failed to process payment outcome event");
+                .isInstanceOf(PermanentPaymentOutcomeException.class)
+                .hasMessageContaining("Unsupported payment outcome event type");
 
         verifyNoInteractions(useCase);
     }
 
     @Test
-    void shouldRejectMalformedPayload() {
+    void shouldRejectMalformedPayloadAsPermanentFailure() {
         ConsumerRecord<String, String> record = record(
                 "payment.succeeded.v1", "{invalid-json");
 
         assertThatThrownBy(() -> consumer.consume(record))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Failed to process payment outcome event");
+                .isInstanceOf(PermanentPaymentOutcomeException.class)
+                .hasMessageContaining("Malformed payment outcome payload");
 
         verifyNoInteractions(useCase);
+    }
+
+    @Test
+    void shouldPropagateTransientProcessingFailureWithoutWrapping() {
+        RuntimeException transientFailure =
+                new RuntimeException("Temporary database failure");
+
+        doThrow(transientFailure)
+                .when(useCase).handle(any(PaymentSucceededEvent.class));
+
+        ConsumerRecord<String, String> record = record(
+                "payment.succeeded.v1",
+                json(succeededEvent()));
+
+        assertThatThrownBy(() -> consumer.consume(record))
+                .isSameAs(transientFailure);
     }
 
     private ConsumerRecord<String, String> record(
@@ -101,6 +118,14 @@ class PaymentOutcomeKafkaConsumerTest {
                 "eventType", eventType.getBytes(StandardCharsets.UTF_8)));
 
         return record;
+    }
+
+    private String json(PaymentSucceededEvent event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (Exception exception) {
+            throw new AssertionError("Could not serialize test event", exception);
+        }
     }
 
     private PaymentSucceededEvent succeededEvent() {

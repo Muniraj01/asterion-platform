@@ -16,14 +16,20 @@ import com.asterion.order.application.service.HandlePaymentOutcomeService;
 import com.asterion.order.application.service.ListOrdersService;
 import com.asterion.order.application.service.OrderOutboxPublisher;
 import com.asterion.order.application.service.TransitionOrderService;
+import com.asterion.order.infrastructure.messaging.PermanentPaymentOutcomeException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.ContainerProperties;
+import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
+import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.util.backoff.FixedBackOff;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -72,16 +78,54 @@ public class OrderApplicationConfiguration {
     }
 
     @Bean
+    DefaultErrorHandler orderPaymentOutcomeErrorHandler(
+            KafkaTemplate<String, String> kafkaTemplate,
+            @Value("${asterion.order.payment-outcome.kafka.retry.backoff-interval-ms:1000}")
+            long backoffIntervalMs,
+            @Value("${asterion.order.payment-outcome.kafka.retry.max-retries:3}")
+            long maxRetries) {
+
+        if (backoffIntervalMs < 1) {
+            throw new IllegalArgumentException(
+                    "Payment outcome retry backoff must be at least 1 ms");
+        }
+        if (maxRetries < 0) {
+            throw new IllegalArgumentException(
+                    "Payment outcome max retries must not be negative");
+        }
+
+        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
+                kafkaTemplate, (record, exception) ->
+                new TopicPartition(record.topic() + ".DLT", record.partition())
+        );
+
+        recoverer.setFailIfSendResultIsError(true);
+        recoverer.setWaitForSendResultTimeout(Duration.ofSeconds(10));
+
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(
+                recoverer, new FixedBackOff(backoffIntervalMs, maxRetries));
+
+        errorHandler.addNotRetryableExceptions(
+                PermanentPaymentOutcomeException.class,
+                IllegalArgumentException.class,
+                IllegalStateException.class
+        );
+
+        return errorHandler;
+    }
+
+    @Bean
     ConcurrentKafkaListenerContainerFactory<String, String>
     orderPaymentOutcomeKafkaListenerContainerFactory(
-            ConsumerFactory<String, String> consumerFactory) {
+            ConsumerFactory<String, String> consumerFactory,
+            DefaultErrorHandler orderPaymentOutcomeErrorHandler) {
 
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
 
         factory.setConsumerFactory(consumerFactory);
-        factory.getContainerProperties().setAckMode(
-                ContainerProperties.AckMode.RECORD);
+        factory.setCommonErrorHandler(orderPaymentOutcomeErrorHandler);
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
 
         return factory;
     }

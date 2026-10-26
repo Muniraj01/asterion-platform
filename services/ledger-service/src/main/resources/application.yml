@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: ledger-service
+
+  datasource:
+    url: ${LEDGER_DATASOURCE_URL:jdbc:postgresql://localhost:55435/asterion_ledger}
+    username: ${LEDGER_DATASOURCE_USERNAME:asterion}
+    password: ${LEDGER_DATASOURCE_PASSWORD:asterion}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${ASTERION_LEDGER_KAFKA_CONSUMER_GROUP_ID:ledger-service}
+      auto-offset-reset: ${ASTERION_LEDGER_KAFKA_AUTO_OFFSET_RESET:earliest}
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        isolation.level: read_committed
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+server:
+  port: ${LEDGER_SERVER_PORT:8085}
+
+asterion:
+  ledger:
+    kafka:
+      payment-outcome-topic: ${ASTERION_LEDGER_PAYMENT_OUTCOME_TOPIC:payment.events}
+      consumer-group-id: ${ASTERION_LEDGER_KAFKA_CONSUMER_GROUP_ID:ledger-service}

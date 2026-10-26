@@ -45,6 +45,7 @@
         <module>services/merchant-service</module>
         <module>services/order-service</module>
         <module>services/payment-service</module>
+        <module>services/ledger-service</module>
     </modules>
 
     <dependencyManagement>

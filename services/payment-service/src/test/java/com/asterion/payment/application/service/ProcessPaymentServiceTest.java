@@ -22,6 +22,10 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.asterion.payment.application.model.RiskAssessmentResult;
+import com.asterion.payment.application.port.out.RiskAssessmentPort;
+import com.asterion.payment.domain.model.RiskDecision;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -36,6 +40,9 @@ class ProcessPaymentServiceTest {
 
     @Mock
     private PaymentProcessorPort paymentProcessorPort;
+
+    @Mock
+    private RiskAssessmentPort riskAssessmentPort;
 
     private ProcessPaymentService service;
 
@@ -62,6 +69,7 @@ class ProcessPaymentServiceTest {
         service = new ProcessPaymentService(
                 paymentRepository,
                 paymentProcessorPort,
+                riskAssessmentPort,
                 Clock.fixed(now, ZoneOffset.UTC),
                 MAX_ATTEMPTS,
                 Duration.ofSeconds(5),
@@ -82,7 +90,11 @@ class ProcessPaymentServiceTest {
                 now,
                 attemptCount,
                 null,
-                now.plusSeconds(60));
+                now.plusSeconds(60),
+                RiskDecision.APPROVE,
+                "AMOUNT_WITHIN_AUTO_APPROVAL_THRESHOLD",
+                now
+        );
     }
 
     private void claim(Payment payment) {
@@ -195,5 +207,109 @@ class ProcessPaymentServiceTest {
 
         assertThrows(IllegalStateException.class, () -> service.process(orderId));
         assertEquals(PaymentStatus.SUCCEEDED, payment.status());
+    }
+
+    @Test
+    void shouldPersistApprovalBeforeCallingProcessor() {
+        Payment payment = Payment.rehydrate(
+                paymentId,
+                orderId,
+                merchantId,
+                customerId,
+                eventId,
+                new BigDecimal("250.00"),
+                PaymentStatus.PROCESSING,
+                createdAt,
+                now,
+                1,
+                null,
+                now.plusSeconds(60));
+
+        claim(payment);
+
+        when(riskAssessmentPort.assess(payment)).thenReturn(
+                new RiskAssessmentResult(RiskDecision.APPROVE,
+                        "AMOUNT_WITHIN_AUTO_APPROVAL_THRESHOLD"));
+
+        when(paymentProcessorPort.process(payment, paymentId.toString()))
+                .thenReturn(PaymentProcessingResult.SUCCEEDED);
+
+        service.process(orderId);
+
+        assertEquals(RiskDecision.APPROVE, payment.riskDecision());
+        assertEquals("AMOUNT_WITHIN_AUTO_APPROVAL_THRESHOLD",
+                payment.riskReasonCode());
+        assertEquals(now, payment.riskAssessedAt());
+
+        var order = inOrder(paymentRepository, paymentProcessorPort);
+        order.verify(paymentRepository).save(payment);
+        order.verify(paymentProcessorPort).process(payment, paymentId.toString());
+    }
+
+    @Test
+    void shouldRejectPaymentWithoutCallingProcessor() {
+        Payment payment = Payment.rehydrate(
+                paymentId,
+                orderId,
+                merchantId,
+                customerId,
+                eventId,
+                new BigDecimal("250.00"),
+                PaymentStatus.PROCESSING,
+                createdAt,
+                now,
+                1,
+                null,
+                now.plusSeconds(60));
+
+        claim(payment);
+
+        when(riskAssessmentPort.assess(payment)).thenReturn(
+                new RiskAssessmentResult(RiskDecision.REJECT,
+                        "RISK_POLICY_REJECTED"));
+
+        service.process(orderId);
+
+        assertEquals(PaymentStatus.RISK_REJECTED, payment.status());
+        assertEquals(RiskDecision.REJECT, payment.riskDecision());
+        assertEquals("RISK_POLICY_REJECTED", payment.riskReasonCode());
+
+        verifyNoInteractions(paymentProcessorPort);
+        verify(paymentRepository).saveWithOutcome(
+                eq(payment), isA(PaymentFailedEvent.class));
+        verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldHoldPaymentForReviewWithoutCallingProcessorOrPublishingOutcome() {
+        Payment payment = Payment.rehydrate(
+                paymentId,
+                orderId,
+                merchantId,
+                customerId,
+                eventId,
+                new BigDecimal("250.00"),
+                PaymentStatus.PROCESSING,
+                createdAt,
+                now,
+                1,
+                null,
+                now.plusSeconds(60));
+
+        claim(payment);
+
+        when(riskAssessmentPort.assess(payment)).thenReturn(
+                new RiskAssessmentResult(RiskDecision.REVIEW,
+                        "MANUAL_REVIEW_REQUIRED"));
+
+        service.process(orderId);
+
+        assertEquals(PaymentStatus.RISK_REVIEW, payment.status());
+        assertEquals(RiskDecision.REVIEW, payment.riskDecision());
+        assertEquals("MANUAL_REVIEW_REQUIRED", payment.riskReasonCode());
+
+        verifyNoInteractions(paymentProcessorPort);
+        verify(paymentRepository).save(payment);
+        verify(paymentRepository, never()).saveWithOutcome(any(), any());
     }
 }

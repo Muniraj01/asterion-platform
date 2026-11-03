@@ -1,14 +1,15 @@
-
 package com.asterion.payment.application.service;
 
-import com.asterion.events.DomainEvent;
 import com.asterion.events.PaymentFailedEvent;
 import com.asterion.events.PaymentSucceededEvent;
 import com.asterion.payment.application.model.PaymentProcessingResult;
+import com.asterion.payment.application.model.RiskAssessmentResult;
 import com.asterion.payment.application.port.in.ProcessPaymentUseCase;
 import com.asterion.payment.application.port.out.PaymentProcessorPort;
 import com.asterion.payment.application.port.out.PaymentRepository;
+import com.asterion.payment.application.port.out.RiskAssessmentPort;
 import com.asterion.payment.domain.model.Payment;
+import com.asterion.payment.domain.model.RiskDecision;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +25,7 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
 
     private final PaymentRepository paymentRepository;
     private final PaymentProcessorPort paymentProcessorPort;
+    private final RiskAssessmentPort riskAssessmentPort;
     private final Clock clock;
     private final int maxAttempts;
     private final Duration baseRetryDelay;
@@ -33,6 +35,7 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
     public ProcessPaymentService(
             PaymentRepository paymentRepository,
             PaymentProcessorPort paymentProcessorPort,
+            RiskAssessmentPort riskAssessmentPort,
             Clock clock,
             int maxAttempts,
             Duration baseRetryDelay,
@@ -59,6 +62,7 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
 
         this.paymentRepository = paymentRepository;
         this.paymentProcessorPort = paymentProcessorPort;
+        this.riskAssessmentPort = riskAssessmentPort;
         this.clock = clock;
         this.maxAttempts = maxAttempts;
         this.baseRetryDelay = baseRetryDelay;
@@ -76,6 +80,9 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
                 .orElse(null);
 
         if (payment == null)
+            return;
+
+        if (!applyRiskDecision(payment))
             return;
 
         PaymentProcessingResult result;
@@ -100,6 +107,57 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
         }
     }
 
+    /**
+     * Returns true only when the payment is approved to proceed.
+     * Existing decisions are reused across processing retries.
+     */
+    private boolean applyRiskDecision(Payment payment) {
+        if (payment.riskDecision() == null) {
+            RiskAssessmentResult assessment = riskAssessmentPort.assess(payment);
+
+            payment.recordRiskAssessment(
+                    assessment.decision(), assessment.reasonCode(), clock.instant());
+
+            if (assessment.decision() == RiskDecision.APPROVE) {
+                // Persist approval before making the external processor call.
+                paymentRepository.save(payment);
+            }
+        }
+
+        Instant now = clock.instant();
+
+        return switch (payment.riskDecision()) {
+            case APPROVE -> true;
+
+            case REJECT -> {
+                payment.rejectForRisk(now);
+                paymentRepository.saveWithOutcome(
+                        payment, failedEvent(payment, now));
+
+                log.warn("Payment rejected by risk policy. "
+                                + "paymentId={}, orderId={}, reasonCode={}",
+                        payment.paymentId(),
+                        payment.orderId(),
+                        payment.riskReasonCode());
+
+                yield false;
+            }
+
+            case REVIEW -> {
+                payment.holdForRiskReview(now);
+                paymentRepository.save(payment);
+
+                log.info("Payment held for risk review. "
+                                + "paymentId={}, orderId={}, reasonCode={}",
+                        payment.paymentId(),
+                        payment.orderId(),
+                        payment.riskReasonCode());
+
+                yield false;
+            }
+        };
+    }
+
     private void recordTechnicalFailure(
             Payment payment, RuntimeException exception) {
         Instant now = clock.instant();
@@ -114,7 +172,8 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
                     payment.attemptCount(),
                     exception);
 
-            paymentRepository.saveWithOutcome(payment, failedEvent(payment, now));
+            paymentRepository.saveWithOutcome(
+                    payment, failedEvent(payment, now));
         } else {
             Instant retryAt = now.plus(retryDelay(payment.attemptCount()));
             payment.scheduleRetry(retryAt, now);
@@ -127,7 +186,6 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
                     retryAt,
                     exception);
 
-            // Intermediate failures do not produce terminal outcome events.
             paymentRepository.save(payment);
         }
     }
@@ -166,6 +224,8 @@ public class ProcessPaymentService implements ProcessPaymentUseCase {
             return maxRetryDelay;
         }
 
-        return delay.compareTo(maxRetryDelay) > 0 ? maxRetryDelay : delay;
+        return delay.compareTo(maxRetryDelay) > 0
+                ? maxRetryDelay
+                : delay;
     }
 }

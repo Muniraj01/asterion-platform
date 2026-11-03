@@ -61,3 +61,6 @@ asterion:
       recovery-enabled: ${ASTERION_PAYMENT_RECOVERY_ENABLED:true}
       recovery-interval-ms: ${ASTERION_PAYMENT_RECOVERY_INTERVAL_MS:5000}
       recovery-batch-size: ${ASTERION_PAYMENT_RECOVERY_BATCH_SIZE:100}
+    risk:
+      review-above-amount: ${ASTERION_PAYMENT_RISK_REVIEW_ABOVE_AMOUNT:10000.00}
+      reject-above-amount: ${ASTERION_PAYMENT_RISK_REJECT_ABOVE_AMOUNT:}

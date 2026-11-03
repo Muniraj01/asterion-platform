@@ -2,6 +2,7 @@ package com.asterion.payment.infrastructure.persistence;
 
 import com.asterion.payment.domain.model.Payment;
 import com.asterion.payment.domain.model.PaymentStatus;
+import com.asterion.payment.domain.model.RiskDecision;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -55,6 +56,16 @@ public class PaymentJpaEntity {
     @Column(name = "processing_lease_until")
     private Instant processingLeaseUntil;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "risk_decision", length = 16)
+    private RiskDecision riskDecision;
+
+    @Column(name = "risk_reason_code", length = 100)
+    private String riskReasonCode;
+
+    @Column(name = "risk_assessed_at")
+    private Instant riskAssessedAt;
+
     protected PaymentJpaEntity() {
     }
 
@@ -73,6 +84,9 @@ public class PaymentJpaEntity {
         entity.attemptCount = payment.attemptCount();
         entity.nextAttemptAt = payment.nextAttemptAt();
         entity.processingLeaseUntil = payment.processingLeaseUntil();
+        entity.riskDecision = payment.riskDecision();
+        entity.riskReasonCode = payment.riskReasonCode();
+        entity.riskAssessedAt = payment.riskAssessedAt();
 
         return entity;
     }
@@ -83,6 +97,9 @@ public class PaymentJpaEntity {
         this.attemptCount = payment.attemptCount();
         this.nextAttemptAt = payment.nextAttemptAt();
         this.processingLeaseUntil = payment.processingLeaseUntil();
+        this.riskDecision = payment.riskDecision();
+        this.riskReasonCode = payment.riskReasonCode();
+        this.riskAssessedAt = payment.riskAssessedAt();
     }
 
     public Payment toDomain() {
@@ -98,7 +115,10 @@ public class PaymentJpaEntity {
                 updatedAt,
                 attemptCount,
                 nextAttemptAt,
-                processingLeaseUntil
+                processingLeaseUntil,
+                riskDecision,
+                riskReasonCode,
+                riskAssessedAt
         );
     }
 

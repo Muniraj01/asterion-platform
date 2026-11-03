@@ -5,5 +5,7 @@ public enum PaymentStatus {
     PROCESSING,
     RETRYABLE,
     SUCCEEDED,
-    FAILED
+    FAILED,
+    RISK_REJECTED,
+    RISK_REVIEW
 }

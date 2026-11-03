@@ -129,18 +129,16 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
     @Override
     @Transactional
     public void saveWithOutcome(Payment payment, DomainEvent event) {
-        if (payment.status() != PaymentStatus.SUCCEEDED
-                && payment.status() != PaymentStatus.FAILED) {
-            throw new IllegalArgumentException(
-                    "Outcome events require a terminal payment status");
-        }
-
         boolean succeeded = event instanceof PaymentSucceededEvent;
         boolean failed = event instanceof PaymentFailedEvent;
 
+        boolean successfulStatus = payment.status() == PaymentStatus.SUCCEEDED;
+        boolean failedStatus = payment.status() == PaymentStatus.FAILED
+                || payment.status() == PaymentStatus.RISK_REJECTED;
+
         if ((!succeeded && !failed)
-                || (succeeded && payment.status() != PaymentStatus.SUCCEEDED)
-                || (failed && payment.status() != PaymentStatus.FAILED)) {
+                || (succeeded && !successfulStatus)
+                || (failed && !failedStatus)) {
             throw new IllegalArgumentException(
                     "Payment status and outcome event type do not match");
         }

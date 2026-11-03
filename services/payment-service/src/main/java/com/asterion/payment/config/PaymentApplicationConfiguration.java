@@ -20,6 +20,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.time.Clock;
 import java.time.Duration;
+import com.asterion.payment.application.port.out.RiskAssessmentPort;
+import com.asterion.payment.infrastructure.risk.RuleBasedRiskAssessmentAdapter;
+
+import java.math.BigDecimal;
 
 @Configuration
 @EnableScheduling
@@ -34,6 +38,7 @@ public class PaymentApplicationConfiguration {
     ProcessPaymentUseCase processPaymentUseCase(
             PaymentRepository paymentRepository,
             PaymentProcessorPort paymentProcessorPort,
+            RiskAssessmentPort riskAssessmentPort,
             Clock paymentClock,
             @Value("${asterion.payment.processing.max-attempts:5}")
             int maxAttempts,
@@ -47,6 +52,7 @@ public class PaymentApplicationConfiguration {
         return new ProcessPaymentService(
                 paymentRepository,
                 paymentProcessorPort,
+                riskAssessmentPort,
                 paymentClock,
                 maxAttempts,
                 Duration.ofMillis(baseRetryDelayMs),
@@ -86,5 +92,19 @@ public class PaymentApplicationConfiguration {
         factory.setConsumerFactory(consumerFactory);
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
         return factory;
+    }
+
+    @Bean
+    RiskAssessmentPort riskAssessmentPort(
+            @Value("${asterion.payment.risk.review-above-amount:10000.00}")
+            BigDecimal reviewAboveAmount,
+            @Value("${asterion.payment.risk.reject-above-amount:}")
+            String rejectAboveAmount) {
+
+        BigDecimal rejectionThreshold =
+                rejectAboveAmount == null || rejectAboveAmount.isBlank()
+                        ? null : new BigDecimal(rejectAboveAmount.trim());
+
+        return new RuleBasedRiskAssessmentAdapter(reviewAboveAmount, rejectionThreshold);
     }
 }

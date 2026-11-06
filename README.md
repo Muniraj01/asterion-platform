@@ -134,7 +134,7 @@ sequenceDiagram
     else Risk decision is REVIEW
         R-->>P: REVIEW
         P->>P: Persist RISK_REVIEW state
-        Note over P: Payment is held; manual review workflow is not yet implemented
+        Note over P: Payment is held. Manual review workflow is not yet implemented.
     end
 ```
 
